@@ -1,7 +1,6 @@
+import os, time, json
 from flask import Flask, jsonify, send_from_directory
-import yfinance as yf
 from datetime import datetime
-import os
 
 app = Flask(__name__, static_folder="static")
 
@@ -23,48 +22,37 @@ PORTFOLIO = [
     {"code":"8316","ticker":"8316.T","ja":"三井住友FG",          "en":"SMFG",           "sector":"銀行"},
 ]
 
-# ── 메인 페이지 ───────────────────────────────────────────
-@app.route("/")
-def index():
-    return send_from_directory("static", "index.html")
+def fetch_one(ticker, retries=3):
+    """
+    1銘柄を個別取得。Rate limit時はwait&retryする。
+    yf.Ticker().history()はdownload()より軽量でクラウド環境に適している。
+    """
+    import yfinance as yf
 
-# ── 주가 API ─────────────────────────────────────────────
-@app.route("/api/quotes")
-def quotes():
-    tickers = [s["ticker"] for s in PORTFOLIO]
-    ts = datetime.now().strftime("%H:%M:%S")
-    print(f"[{ts}] Fetching {len(tickers)} tickers from Yahoo Finance...")
-
-    try:
-        raw = yf.download(
-            tickers,
-            period="5d",
-            interval="1d",
-            auto_adjust=True,
-            progress=False,
-            threads=True,
-        )
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-    results = []
-    for s in PORTFOLIO:
-        t = s["ticker"]
+    for attempt in range(retries):
         try:
-            closes = raw["Close"][t].dropna()
+            t = yf.Ticker(ticker)
+            hist = t.history(period="5d", interval="1d", auto_adjust=True)
+
+            if hist.empty:
+                raise ValueError("empty dataframe")
+
+            closes = hist["Close"].dropna()
             if len(closes) == 0:
-                raise ValueError("no data")
+                raise ValueError("no close data")
+
             price = float(closes.iloc[-1])
             prev  = float(closes.iloc[-2]) if len(closes) >= 2 else price
             chg   = price - prev
             pct   = chg / prev * 100 if prev else 0.0
             date  = str(closes.index[-1].date())
+
             try:
-                vol = int(raw["Volume"][t].dropna().iloc[-1])
+                vol = int(hist["Volume"].dropna().iloc[-1])
             except Exception:
                 vol = 0
-            results.append({
-                **s,
+
+            return {
                 "price":  round(price),
                 "prev":   round(prev),
                 "change": round(chg),
@@ -72,24 +60,60 @@ def quotes():
                 "volume": vol,
                 "date":   date,
                 "ok":     True,
-            })
-            print(f"  ✓ {s['code']} {s['ja']:<14} ¥{round(price):>8,}  "
-                  f"({'+'if chg>=0 else ''}{round(chg):,}円 / "
-                  f"{'+'if pct>=0 else ''}{pct:.2f}%)  {date}")
+            }
+
         except Exception as e:
-            print(f"  ✗ {s['code']} {s['ja']:<14} failed: {e}")
-            results.append({**s, "price":0,"prev":0,"change":0,
-                            "pct":0,"volume":0,"date":"","ok":False})
+            err_str = str(e).lower()
+            # Rate limit → 少し待ってリトライ
+            if "rate" in err_str or "429" in err_str or "too many" in err_str:
+                wait = 3 * (attempt + 1)
+                print(f"  ⚠ Rate limit [{ticker}], waiting {wait}s...")
+                time.sleep(wait)
+            else:
+                print(f"  ✗ [{ticker}] attempt {attempt+1}: {e}")
+                if attempt < retries - 1:
+                    time.sleep(1)
+
+    return {"price":0,"prev":0,"change":0,"pct":0,"volume":0,"date":"","ok":False}
+
+
+@app.route("/")
+def index():
+    return send_from_directory("static", "index.html")
+
+
+@app.route("/api/quotes")
+def quotes():
+    ts = datetime.now().strftime("%H:%M:%S")
+    print(f"\n[{ts}] Fetching {len(PORTFOLIO)} tickers...")
+
+    results = []
+    for s in PORTFOLIO:
+        data = fetch_one(s["ticker"])
+        row  = {**s, **data}
+        results.append(row)
+
+        if data["ok"]:
+            sign = "+" if data["change"] >= 0 else ""
+            print(f"  ✓ {s['code']} {s['ja']:<14} "
+                  f"¥{data['price']:>8,}  "
+                  f"({sign}{data['pct']:.2f}%)  {data['date']}")
+        else:
+            print(f"  ✗ {s['code']} {s['ja']:<14} 取得失敗")
+
+        # 連続リクエストの間に少し間隔を空ける（Rate limit対策）
+        time.sleep(0.3)
 
     ok_n = sum(1 for r in results if r["ok"])
     print(f"  → Done: {ok_n}/{len(results)}\n")
     return jsonify(results)
 
-# ── 헬스체크 (Render 슬립 방지용) ──────────────────────
+
 @app.route("/health")
 def health():
     return jsonify({"status": "ok", "time": datetime.now().isoformat()})
 
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port, debug=False)
