@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>JP Portfolio Monitor</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap');
+:root{
+  --bg:#0b0f1c;--bg2:#111827;--bg3:#1a2235;--card:#131c2e;
+  --border:rgba(255,255,255,.07);--accent:#38bdf8;
+  --up:#34d399;--dn:#f87171;--text:#e2e8f0;--muted:#64748b;
+  --up-bg:rgba(52,211,153,.1);--dn-bg:rgba(248,113,113,.1);
+  --up-txt:#6ee7b7;--dn-txt:#fca5a5;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-serif;min-height:100vh}
+body::before{content:'';position:fixed;inset:0;
+  background-image:linear-gradient(rgba(56,189,248,.025) 1px,transparent 1px),
+  linear-gradient(90deg,rgba(56,189,248,.025) 1px,transparent 1px);
+  background-size:48px 48px;pointer-events:none;z-index:0}
+.page{position:relative;z-index:1;max-width:1480px;margin:0 auto;padding:24px}
+
+.hdr{display:flex;align-items:flex-start;justify-content:space-between;
+  margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border);
+  flex-wrap:wrap;gap:12px}
+.hdr-l{display:flex;align-items:center;gap:12px}
+.hdr-icon{width:38px;height:38px;background:linear-gradient(135deg,var(--accent),#818cf8);
+  border-radius:10px;display:flex;align-items:center;justify-content:center;
+  font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:#fff}
+.hdr-title{font-family:'Space Mono',monospace;font-size:17px;font-weight:700;letter-spacing:.04em}
+.hdr-sub{font-size:10px;color:var(--muted);margin-top:3px}
+.hdr-r{display:flex;align-items:center;gap:10px}
+.live{display:flex;align-items:center;gap:5px;background:rgba(52,211,153,.08);
+  border:1px solid rgba(52,211,153,.25);border-radius:20px;padding:3px 11px;
+  font-size:10px;color:var(--up);font-family:'Space Mono',monospace}
+.dot{width:5px;height:5px;border-radius:50%;background:var(--up);animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.8)}}
+
+.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+.sc{background:var(--card);border:1px solid var(--border);border-radius:12px;
+  padding:14px 16px;position:relative;overflow:hidden}
+.sc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,var(--accent),transparent)}
+.sc-l{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+.sc-v{font-size:22px;font-weight:700;font-family:'Space Mono',monospace}
+.sc-s{font-size:10px;color:var(--muted);margin-top:4px}
+
+.tabs{display:flex;gap:7px;margin-bottom:12px;flex-wrap:wrap}
+.tab{padding:5px 14px;border-radius:20px;font-size:11px;cursor:pointer;
+  border:1px solid var(--border);color:var(--muted);background:transparent;transition:all .18s}
+.tab:hover{border-color:var(--accent);color:var(--accent)}
+.tab.active{background:rgba(56,189,248,.1);border-color:var(--accent);color:var(--accent)}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;
+  padding:14px;transition:transform .15s,border-color .15s,box-shadow .15s;position:relative;overflow:hidden}
+.card:hover{transform:translateY(-2px);border-color:rgba(56,189,248,.3);box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.card.up  {border-left:3px solid var(--up)}
+.card.dn  {border-left:3px solid var(--dn)}
+.card.flat{border-left:3px solid var(--muted)}
+.card.loading::after{content:'';position:absolute;inset:0;border-radius:12px;
+  background:linear-gradient(90deg,transparent 25%,rgba(255,255,255,.04) 50%,transparent 75%);
+  background-size:200% 100%;animation:sh 1.4s infinite}
+@keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.card-h{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:7px}
+.card-code{font-family:'Space Mono',monospace;font-size:10px;color:var(--accent);
+  background:rgba(56,189,248,.1);padding:2px 7px;border-radius:4px}
+.card-sec{font-size:9px;color:var(--muted);background:rgba(255,255,255,.04);padding:2px 7px;border-radius:4px}
+.card-name{font-size:13px;font-weight:500;margin-bottom:10px;line-height:1.35}
+.card-name small{font-size:10px;color:var(--muted);font-weight:300}
+.card-row{display:flex;justify-content:space-between;align-items:flex-end}
+.card-price{font-size:22px;font-weight:700;font-family:'Space Mono',monospace}
+.card-right{text-align:right}
+.card-pct{font-size:12px;font-weight:700;font-family:'Space Mono',monospace;
+  padding:2px 7px;border-radius:5px;display:inline-block}
+.pct-up{color:var(--up-txt);background:var(--up-bg)}
+.pct-dn{color:var(--dn-txt);background:var(--dn-bg)}
+.pct-fl{color:var(--muted);background:rgba(255,255,255,.05)}
+.card-yen{font-size:10px;color:var(--muted);margin-top:2px;font-family:'Space Mono',monospace}
+.card-meta{display:flex;justify-content:space-between;margin-top:7px;
+  font-size:9px;color:var(--muted);font-family:'Space Mono',monospace}
+.spark-wrap{margin-top:10px;height:32px}
+.spark{width:100%;height:32px}
+
+/* 슬립 경고 배너 */
+#sleep-bar{display:none;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);
+  border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:11px;
+  color:#fcd34d;line-height:1.6}
+#err-bar{display:none;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);
+  border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:11px;
+  color:var(--dn-txt);line-height:1.6}
+
+.footer{margin-top:22px;padding-top:14px;border-top:1px solid var(--border);
+  display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
+.footer-note{font-size:10px;color:var(--muted);line-height:1.7}
+.btn-refresh{display:flex;align-items:center;gap:7px;
+  background:linear-gradient(135deg,rgba(56,189,248,.15),rgba(129,140,248,.1));
+  border:1px solid rgba(56,189,248,.35);color:var(--accent);
+  padding:10px 24px;border-radius:10px;cursor:pointer;
+  font-size:13px;font-family:'Noto Sans JP',sans-serif;font-weight:500;
+  transition:all .2s;min-width:140px;justify-content:center}
+.btn-refresh:hover{background:linear-gradient(135deg,rgba(56,189,248,.25),rgba(129,140,248,.2));
+  transform:translateY(-1px);box-shadow:0 4px 16px rgba(56,189,248,.2)}
+.btn-refresh:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
+.btn-refresh.spin svg{animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.btn-rpt{display:flex;align-items:center;gap:6px;
+  background:linear-gradient(135deg,rgba(129,140,248,.2),rgba(56,189,248,.1));
+  border:1px solid rgba(129,140,248,.35);color:#a5b4fc;padding:10px 18px;
+  border-radius:10px;cursor:pointer;font-size:12px;transition:all .2s}
+.btn-rpt:hover{background:linear-gradient(135deg,rgba(129,140,248,.3),rgba(56,189,248,.2))}
+.btn-rpt:disabled{opacity:.4;cursor:not-allowed}
+
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.82);display:none;
+  align-items:flex-start;justify-content:center;z-index:999;backdrop-filter:blur(4px);
+  overflow-y:auto;padding:40px 20px}
+.overlay.open{display:flex}
+.rpt{background:var(--bg2);border:1px solid var(--border);border-radius:14px;
+  padding:28px;max-width:900px;width:100%;position:relative}
+.rpt h2{font-size:17px;margin-bottom:4px}
+.rpt-sub{font-size:11px;color:var(--muted);margin-bottom:18px}
+.rpt-x{position:absolute;top:14px;right:16px;background:transparent;border:none;
+  color:var(--muted);cursor:pointer;font-size:20px}
+.rpt-x:hover{color:var(--text)}
+.rpt-tbl{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px}
+.rpt-tbl th{background:var(--bg3);padding:8px 10px;text-align:left;color:var(--muted);
+  font-weight:500;border-bottom:1px solid var(--border)}
+.rpt-tbl td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle;
+  font-family:'Space Mono',monospace;font-size:11px}
+.rpt-tbl td.nm{font-family:'Noto Sans JP',sans-serif;font-size:12px}
+.rpt-ttl{font-size:13px;font-weight:500;margin:16px 0 8px;border-left:3px solid var(--accent);padding-left:8px}
+.bdg{font-size:9px;padding:1px 6px;border-radius:3px;background:rgba(129,140,248,.15);color:#a5b4fc}
+
+@media(max-width:768px){.summary{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr 1fr}}
+@media(max-width:480px){.grid{grid-template-columns:1fr}.summary{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="hdr">
+    <div class="hdr-l">
+      <div class="hdr-icon">JP</div>
+      <div>
+        <div class="hdr-title">PORTFOLIO MONITOR</div>
+        <div class="hdr-sub" id="hdr-sub">Yahoo Finance (yfinance) · Render クラウド</div>
+      </div>
+    </div>
+    <div class="hdr-r">
+      <div id="lupd" style="font-size:10px;color:var(--muted);font-family:'Space Mono',monospace">取得中...</div>
+      <div class="live"><div class="dot"></div>LIVE</div>
+    </div>
+  </div>
+
+  <div id="sleep-bar">
+    ⏳ サーバーが起動中です（初回または長時間未使用時は30〜60秒かかる場合があります）...
+  </div>
+  <div id="err-bar"></div>
+
+  <div class="summary">
+    <div class="sc"><div class="sc-l">取得 / 合計</div><div class="sc-v" id="s-cnt">— / 15</div><div class="sc-s">Yahoo Finance</div></div>
+    <div class="sc"><div class="sc-l">上昇 / 下落</div><div class="sc-v" id="s-ud" style="font-size:15px">— / —</div><div class="sc-s" id="s-date">直近終値</div></div>
+    <div class="sc"><div class="sc-l">平均変動率</div><div class="sc-v" id="s-avg">—</div><div class="sc-s">全取得銘柄</div></div>
+    <div class="sc"><div class="sc-l">最高上昇</div><div class="sc-v" id="s-top" style="font-size:13px">—</div><div class="sc-s" id="s-topn">—</div></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="fSec('all',this)">すべて</button>
+    <button class="tab" onclick="fSec('テクノロジー',this)">テクノロジー</button>
+    <button class="tab" onclick="fSec('商社',this)">商社</button>
+    <button class="tab" onclick="fSec('銀行',this)">銀行</button>
+    <button class="tab" onclick="fSec('エンタメ',this)">エンタメ</button>
+    <button class="tab" onclick="fSec('通信・投資',this)">通信・投資</button>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="footer">
+    <div class="footer-note">
+      データ: Yahoo Finance (yfinance) · Render 無料ホスティング<br>
+      ※ 15分間未使用後はスリープ状態になります（次回アクセス時に自動復帰）
+    </div>
+    <div style="display:flex;gap:9px;align-items:center">
+      <button class="btn-rpt" id="btn-rpt" disabled>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>分析レポート
+      </button>
+      <button class="btn-refresh" id="btn-ref" onclick="loadQuotes()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="23 4 23 10 17 10"/>
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+        </svg>株価を更新
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="ov">
+  <div class="rpt">
+    <button class="rpt-x" onclick="document.getElementById('ov').classList.remove('open')">×</button>
+    <h2>📊 ポートフォリオ分析レポート</h2>
+    <div class="rpt-sub" id="rpt-date">—</div>
+    <div id="rpt-body"></div>
+  </div>
+</div>
+
+<script>
+const STOCKS=[
+  {c:'7741',ja:'ホーヤ',              n:'HOYA',           s:'テクノロジー'},
+  {c:'6740',ja:'ジャパンディスプレイ',n:'Japan Display',  s:'テクノロジー'},
+  {c:'6758',ja:'ソニーグループ',      n:'Sony Group',     s:'テクノロジー'},
+  {c:'8136',ja:'サンリオ',            n:'Sanrio',         s:'エンタメ'},
+  {c:'3350',ja:'メタプラネット',      n:'Metaplanet',     s:'テクノロジー'},
+  {c:'7974',ja:'任天堂',              n:'Nintendo',       s:'エンタメ'},
+  {c:'9984',ja:'ソフトバンクG',       n:'SoftBank Group', s:'通信・投資'},
+  {c:'8058',ja:'三菱商事',            n:'Mitsubishi Corp',s:'商社'},
+  {c:'8031',ja:'三井物産',            n:'Mitsui & Co',   s:'商社'},
+  {c:'8001',ja:'伊藤忠商事',          n:'ITOCHU',         s:'商社'},
+  {c:'8002',ja:'丸紅',                n:'Marubeni',       s:'商社'},
+  {c:'8053',ja:'住友商事',            n:'Sumitomo Corp',  s:'商社'},
+  {c:'8306',ja:'三菱UFJ',             n:'MUFG',           s:'銀行'},
+  {c:'8411',ja:'みずほFG',            n:'Mizuho FG',      s:'銀行'},
+  {c:'8316',ja:'三井住友FG',          n:'SMFG',           s:'銀行'},
+];
+let allData=[];
+
+function shimmer(){
+  document.getElementById('grid').innerHTML=STOCKS.map(s=>`
+    <div class="card flat loading" id="card-${s.c}" data-sec="${s.s}">
+      <div class="card-h"><span class="card-code">${s.c}</span><span class="card-sec">${s.s}</span></div>
+      <div class="card-name">${s.ja}<br><small>${s.n}</small></div>
+      <div style="height:72px"></div>
+    </div>`).join('');
+}
+
+async function loadQuotes(){
+  const btn=document.getElementById('btn-ref');
+  btn.disabled=true; btn.classList.add('spin');
+  document.getElementById('err-bar').style.display='none';
+
+  // 슬립 복귀 중 안내 (2초 이상 걸리면 표시)
+  const sleepTimer=setTimeout(()=>{
+    document.getElementById('sleep-bar').style.display='block';
+  }, 2000);
+
+  shimmer();
+  try{
+    const r=await fetch('/api/quotes');
+    clearTimeout(sleepTimer);
+    document.getElementById('sleep-bar').style.display='none';
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data=await r.json();
+    if(data.error) throw new Error(data.error);
+    allData=data;
+    renderCards(data);
+    updateSummary(data);
+    const now=new Date().toLocaleTimeString('ja-JP');
+    document.getElementById('lupd').textContent='更新: '+now;
+    document.getElementById('hdr-sub').textContent=
+      `Yahoo Finance (yfinance) · Render クラウド · 取得: ${now}`;
+    document.getElementById('btn-rpt').disabled=false;
+  }catch(e){
+    clearTimeout(sleepTimer);
+    document.getElementById('sleep-bar').style.display='none';
+    const eb=document.getElementById('err-bar');
+    eb.style.display='block';
+    eb.textContent=`⚠️ 取得エラー: ${e.message}`;
+    console.error(e);
+  }
+  btn.disabled=false; btn.classList.remove('spin');
+}
+
+function renderCards(data){
+  const g=document.getElementById('grid'); g.innerHTML='';
+  data.forEach(s=>{
+    const up=s.ok&&s.pct>0.05,dn=s.ok&&s.pct<-0.05;
+    const d=document.createElement('div');
+    d.className='card '+(up?'up':dn?'dn':'flat');
+    d.id='card-'+s.code; d.dataset.sec=s.sector;
+    if(!s.ok){
+      d.innerHTML=`
+        <div class="card-h"><span class="card-code">${s.code}</span><span class="card-sec">${s.sector}</span></div>
+        <div class="card-name">${s.ja}<br><small>${s.en}</small></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:12px">取得失敗</div>`;
+    }else{
+      const sp=s.pct>=0?'+':'',sc=s.change>=0?'+':'';
+      d.innerHTML=`
+        <div class="card-h"><span class="card-code">${s.code}</span><span class="card-sec">${s.sector}</span></div>
+        <div class="card-name">${s.ja}<br><small>${s.en}</small></div>
+        <div class="card-row">
+          <div class="card-price">¥${s.price.toLocaleString('ja-JP')}</div>
+          <div class="card-right">
+            <div class="card-pct ${up?'pct-up':dn?'pct-dn':'pct-fl'}">${sp}${s.pct.toFixed(2)}%</div>
+            <div class="card-yen">${sc}${s.change.toLocaleString()}円</div>
+          </div>
+        </div>
+        <div class="spark-wrap"><canvas class="spark" id="sp-${s.code}"></canvas></div>
+        <div class="card-meta">
+          <span>${s.volume?(s.volume/10000).toFixed(0)+'万株':'—'}</span>
+          <span>${s.date}</span>
+        </div>`;
+    }
+    g.appendChild(d);
+    if(s.ok) setTimeout(()=>spark(s.code,s.pct),60);
+  });
+}
+
+function spark(code,pct){
+  const cv=document.getElementById('sp-'+code); if(!cv)return;
+  const w=cv.width=cv.offsetWidth||200,h=cv.height=32;
+  const ctx=cv.getContext('2d'); ctx.clearRect(0,0,w,h);
+  const n=20,v=[0];
+  for(let i=1;i<n;i++) v.push(pct/100*(i/n)+(Math.random()-.5)*0.0015);
+  v.push(pct/100);
+  const mn=Math.min(...v),mx=Math.max(...v),r=mx-mn||.001;
+  const tx=i=>(i/(v.length-1))*w,ty=q=>h-((q-mn)/r)*(h-5)-2;
+  const isU=pct>=0;
+  const g=ctx.createLinearGradient(0,0,0,h);
+  g.addColorStop(0,isU?'rgba(52,211,153,.18)':'rgba(248,113,113,.18)');
+  g.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.beginPath();ctx.moveTo(tx(0),h);
+  v.forEach((q,i)=>ctx.lineTo(tx(i),ty(q)));
+  ctx.lineTo(tx(v.length-1),h);ctx.closePath();ctx.fillStyle=g;ctx.fill();
+  ctx.beginPath();
+  v.forEach((q,i)=>i===0?ctx.moveTo(tx(i),ty(q)):ctx.lineTo(tx(i),ty(q)));
+  ctx.strokeStyle=isU?'#34d399':'#f87171';ctx.lineWidth=1.5;ctx.stroke();
+}
+
+function updateSummary(data){
+  const ok=data.filter(s=>s.ok);
+  document.getElementById('s-cnt').textContent=`${ok.length}/15`;
+  if(!ok.length)return;
+  const ups=ok.filter(s=>s.pct>0.05).length,dns=ok.filter(s=>s.pct<-0.05).length;
+  const avg=ok.reduce((a,s)=>a+s.pct,0)/ok.length;
+  const dates=ok.map(s=>s.date).filter(Boolean).sort();
+  const lat=dates.length?dates[dates.length-1]:'—';
+  let tp=-Infinity,tn='';
+  ok.forEach(s=>{if(s.pct>tp){tp=s.pct;tn=s.ja;}});
+  document.getElementById('s-ud').textContent=`${ups} / ${dns}`;
+  document.getElementById('s-date').textContent=lat;
+  const ae=document.getElementById('s-avg');
+  ae.textContent=(avg>=0?'+':'')+avg.toFixed(2)+'%';
+  ae.style.color=avg>=0?'var(--up)':'var(--dn)';
+  document.getElementById('s-top').textContent=(tp>=0?'+':'')+tp.toFixed(2)+'%';
+  document.getElementById('s-top').style.color='var(--up)';
+  document.getElementById('s-topn').textContent=tn;
+}
+
+function fSec(sec,btn){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.card').forEach(c=>{
+    c.style.display=(sec==='all'||c.dataset.sec===sec)?'':'none';
+  });
+}
+
+document.getElementById('btn-rpt').addEventListener('click',()=>{
+  const ok=allData.filter(s=>s.ok).sort((a,b)=>b.pct-a.pct);
+  if(!ok.length)return;
+  const ups=ok.filter(s=>s.pct>0).length,dns=ok.filter(s=>s.pct<0).length;
+  const avg=ok.reduce((a,s)=>a+s.pct,0)/(ok.length||1);
+  const sm={};ok.forEach(s=>{if(!sm[s.sector])sm[s.sector]=[];sm[s.sector].push(s.pct);});
+  const sa=Object.entries(sm).map(([n,v])=>({n,a:v.reduce((a,x)=>a+x,0)/v.length})).sort((a,b)=>b.a-a.a);
+  const ps=p=>`color:${p>=0?'#34d399':'#f87171'};font-weight:700`;
+  const rows=ok.map(s=>`<tr>
+    <td style="color:#38bdf8">${s.code}</td>
+    <td class="nm">${s.ja}<br><small style="color:#64748b">${s.en}</small></td>
+    <td><span class="bdg">${s.sector}</span></td>
+    <td>¥${s.price.toLocaleString()}</td>
+    <td style="${ps(s.pct)}">${s.pct>=0?'+':''}${s.pct.toFixed(2)}%</td>
+    <td style="${ps(s.change)}">${s.change>=0?'+':''}${s.change.toLocaleString()}円</td>
+    <td style="font-size:10px;color:#64748b">${s.date}</td>
+  </tr>`).join('');
+  const sr=sa.map(s=>`<tr>
+    <td class="nm">${s.n}</td>
+    <td style="${ps(s.a)}">${s.a>=0?'+':''}${s.a.toFixed(2)}%</td>
+    <td>${s.a>=.5?'✅ 好調':s.a>=0?'🟡 横ばい':s.a>=-.5?'🟡 軟調':'⚠️ 要注意'}</td>
+  </tr>`).join('');
+  const now=new Date().toLocaleString('ja-JP');
+  document.getElementById('rpt-date').textContent=`生成: ${now} · Yahoo Finance (yfinance)`;
+  document.getElementById('rpt-body').innerHTML=`
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">
+      ${[['取得',ok.length,''],['上昇',ups,'color:#34d399'],['下落',dns,'color:#f87171'],
+         ['平均',(avg>=0?'+':'')+avg.toFixed(2)+'%',`color:${avg>=0?'#34d399':'#f87171'}`]]
+        .map(([l,v,st])=>`<div style="background:rgba(255,255,255,.04);border-radius:8px;padding:12px">
+          <div style="font-size:10px;color:#64748b;text-transform:uppercase;margin-bottom:4px">${l}</div>
+          <div style="font-size:20px;font-weight:700;font-family:'Space Mono',monospace;${st}">${v}</div>
+        </div>`).join('')}
+    </div>
+    <div class="rpt-ttl">全銘柄パフォーマンス</div>
+    <table class="rpt-tbl"><thead><tr>
+      <th>コード</th><th>銘柄名</th><th>セクター</th><th>終値</th><th>変動率</th><th>前日比</th><th>日付</th>
+    </tr></thead><tbody>${rows}</tbody></table>
+    <div class="rpt-ttl">セクター別パフォーマンス</div>
+    <table class="rpt-tbl"><thead><tr>
+      <th>セクター</th><th>平均変動率</th><th>状況</th>
+    </tr></thead><tbody>${sr}</tbody></table>
+    <div style="font-size:10px;color:#64748b;margin-top:14px;text-align:center">
+      Yahoo Finance (yfinance) · 投資判断は自己責任でお願いします。
+    </div>`;
+  document.getElementById('ov').classList.add('open');
+});
+document.getElementById('ov').addEventListener('click',e=>{
+  if(e.target===e.currentTarget)e.currentTarget.classList.remove('open');
+});
+
+shimmer();
+loadQuotes();
+</script>
+</body>
+</html>
