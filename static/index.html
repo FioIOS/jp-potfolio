@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>JP Portfolio Monitor</title>
+<!-- Sortable.js for drag&drop -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap');
 :root{
@@ -21,22 +23,23 @@ body::before{content:'';position:fixed;inset:0;
   background-size:48px 48px;pointer-events:none;z-index:0}
 .page{position:relative;z-index:1;max-width:1480px;margin:0 auto;padding:24px}
 
+/* ── Header ── */
 .hdr{display:flex;align-items:flex-start;justify-content:space-between;
-  margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border);
-  flex-wrap:wrap;gap:12px}
+  margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:12px}
 .hdr-l{display:flex;align-items:center;gap:12px}
 .hdr-icon{width:38px;height:38px;background:linear-gradient(135deg,var(--accent),#818cf8);
   border-radius:10px;display:flex;align-items:center;justify-content:center;
   font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:#fff}
 .hdr-title{font-family:'Space Mono',monospace;font-size:17px;font-weight:700;letter-spacing:.04em}
 .hdr-sub{font-size:10px;color:var(--muted);margin-top:3px}
-.hdr-r{display:flex;align-items:center;gap:10px}
+.hdr-r{display:flex;align-items:center;gap:8px}
 .live{display:flex;align-items:center;gap:5px;background:rgba(52,211,153,.08);
   border:1px solid rgba(52,211,153,.25);border-radius:20px;padding:3px 11px;
   font-size:10px;color:var(--up);font-family:'Space Mono',monospace}
 .dot{width:5px;height:5px;border-radius:50%;background:var(--up);animation:pulse 1.5s infinite}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.8)}}
 
+/* ── Summary ── */
 .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
 .sc{background:var(--card);border:1px solid var(--border);border-radius:12px;
   padding:14px 16px;position:relative;overflow:hidden}
@@ -46,18 +49,19 @@ body::before{content:'';position:fixed;inset:0;
 .sc-v{font-size:22px;font-weight:700;font-family:'Space Mono',monospace}
 .sc-s{font-size:10px;color:var(--muted);margin-top:4px}
 
+/* ── Tabs ── */
 .tabs{display:flex;gap:7px;margin-bottom:12px;flex-wrap:wrap}
 .tab{padding:5px 14px;border-radius:20px;font-size:11px;cursor:pointer;
   border:1px solid var(--border);color:var(--muted);background:transparent;transition:all .18s}
 .tab:hover{border-color:var(--accent);color:var(--accent)}
 .tab.active{background:rgba(56,189,248,.1);border-color:var(--accent);color:var(--accent)}
 
+/* ── Grid ── */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
 .card{background:var(--card);border:1px solid var(--border);border-radius:12px;
   padding:14px;transition:transform .15s,border-color .15s,box-shadow .15s;position:relative;overflow:hidden}
 .card:hover{transform:translateY(-2px);border-color:rgba(56,189,248,.3);box-shadow:0 8px 24px rgba(0,0,0,.4)}
-.card.up  {border-left:3px solid var(--up)}
-.card.dn  {border-left:3px solid var(--dn)}
+.card.up {border-left:3px solid var(--up)}.card.dn{border-left:3px solid var(--dn)}
 .card.flat{border-left:3px solid var(--muted)}
 .card.loading::after{content:'';position:absolute;inset:0;border-radius:12px;
   background:linear-gradient(90deg,transparent 25%,rgba(255,255,255,.04) 50%,transparent 75%);
@@ -80,42 +84,122 @@ body::before{content:'';position:fixed;inset:0;
 .card-yen{font-size:10px;color:var(--muted);margin-top:2px;font-family:'Space Mono',monospace}
 .card-meta{display:flex;justify-content:space-between;margin-top:7px;
   font-size:9px;color:var(--muted);font-family:'Space Mono',monospace}
-.spark-wrap{margin-top:10px;height:32px}
-.spark{width:100%;height:32px}
+.spark-wrap{margin-top:10px;height:32px}.spark{width:100%;height:32px}
 
-/* 슬립 경고 배너 */
-#sleep-bar{display:none;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);
-  border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:11px;
-  color:#fcd34d;line-height:1.6}
-#err-bar{display:none;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);
-  border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:11px;
-  color:var(--dn-txt);line-height:1.6}
+/* ── Buttons ── */
+.btn{display:flex;align-items:center;gap:6px;padding:9px 18px;border-radius:9px;
+  cursor:pointer;font-size:12px;font-family:'Noto Sans JP',sans-serif;
+  font-weight:500;transition:all .18s;border:1px solid transparent}
+.btn-primary{background:linear-gradient(135deg,rgba(56,189,248,.15),rgba(129,140,248,.1));
+  border-color:rgba(56,189,248,.35);color:var(--accent)}
+.btn-primary:hover{background:linear-gradient(135deg,rgba(56,189,248,.25),rgba(129,140,248,.2));
+  transform:translateY(-1px)}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-primary.spin svg{animation:spin .8s linear infinite}
+.btn-edit{background:rgba(129,140,248,.1);border-color:rgba(129,140,248,.3);color:#a5b4fc}
+.btn-edit:hover{background:rgba(129,140,248,.2)}
+.btn-rpt{background:linear-gradient(135deg,rgba(129,140,248,.2),rgba(56,189,248,.1));
+  border-color:rgba(129,140,248,.35);color:#a5b4fc}
+.btn-rpt:hover{background:linear-gradient(135deg,rgba(129,140,248,.3),rgba(56,189,248,.2))}
+.btn-rpt:disabled{opacity:.4;cursor:not-allowed}
+@keyframes spin{to{transform:rotate(360deg)}}
 
+/* ── Info bars ── */
+#sleep-bar,#err-bar{display:none;border-radius:8px;padding:10px 14px;
+  margin-bottom:14px;font-size:11px;line-height:1.6}
+#sleep-bar{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);color:#fcd34d}
+#err-bar{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);color:var(--dn-txt)}
+
+/* ── Footer ── */
 .footer{margin-top:22px;padding-top:14px;border-top:1px solid var(--border);
   display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
 .footer-note{font-size:10px;color:var(--muted);line-height:1.7}
-.btn-refresh{display:flex;align-items:center;gap:7px;
-  background:linear-gradient(135deg,rgba(56,189,248,.15),rgba(129,140,248,.1));
-  border:1px solid rgba(56,189,248,.35);color:var(--accent);
-  padding:10px 24px;border-radius:10px;cursor:pointer;
-  font-size:13px;font-family:'Noto Sans JP',sans-serif;font-weight:500;
-  transition:all .2s;min-width:140px;justify-content:center}
-.btn-refresh:hover{background:linear-gradient(135deg,rgba(56,189,248,.25),rgba(129,140,248,.2));
-  transform:translateY(-1px);box-shadow:0 4px 16px rgba(56,189,248,.2)}
-.btn-refresh:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
-.btn-refresh.spin svg{animation:spin .8s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-.btn-rpt{display:flex;align-items:center;gap:6px;
-  background:linear-gradient(135deg,rgba(129,140,248,.2),rgba(56,189,248,.1));
-  border:1px solid rgba(129,140,248,.35);color:#a5b4fc;padding:10px 18px;
-  border-radius:10px;cursor:pointer;font-size:12px;transition:all .2s}
-.btn-rpt:hover{background:linear-gradient(135deg,rgba(129,140,248,.3),rgba(56,189,248,.2))}
-.btn-rpt:disabled{opacity:.4;cursor:not-allowed}
 
-.overlay{position:fixed;inset:0;background:rgba(0,0,0,.82);display:none;
-  align-items:flex-start;justify-content:center;z-index:999;backdrop-filter:blur(4px);
-  overflow-y:auto;padding:40px 20px}
+/* ════════════════════════════════════
+   EDIT MODAL
+═══════════════════════════════════════ */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;
+  align-items:flex-start;justify-content:center;z-index:900;backdrop-filter:blur(6px);
+  overflow-y:auto;padding:32px 16px}
 .overlay.open{display:flex}
+
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:16px;
+  width:100%;max-width:600px;position:relative;overflow:hidden}
+.modal-hdr{display:flex;align-items:center;justify-content:space-between;
+  padding:20px 24px 16px;border-bottom:1px solid var(--border)}
+.modal-title{font-size:15px;font-weight:500}
+.modal-x{background:transparent;border:none;color:var(--muted);
+  cursor:pointer;font-size:20px;line-height:1;padding:2px 6px}
+.modal-x:hover{color:var(--text)}
+.modal-body{padding:20px 24px;max-height:70vh;overflow-y:auto}
+.modal-footer{display:flex;justify-content:flex-end;gap:9px;
+  padding:16px 24px;border-top:1px solid var(--border)}
+
+/* 編集リスト */
+.edit-list{list-style:none;margin-bottom:20px}
+.edit-item{display:flex;align-items:center;gap:10px;
+  padding:10px 12px;border-radius:9px;border:1px solid var(--border);
+  background:var(--bg3);margin-bottom:7px;cursor:default;
+  transition:border-color .15s}
+.edit-item:hover{border-color:rgba(56,189,248,.25)}
+.edit-item.sortable-ghost{opacity:.35}
+.edit-item.sortable-chosen{border-color:var(--accent);box-shadow:0 0 0 2px rgba(56,189,248,.15)}
+.drag-handle{color:var(--muted);cursor:grab;font-size:16px;line-height:1;
+  user-select:none;padding:0 4px}
+.drag-handle:active{cursor:grabbing}
+.item-code{font-family:'Space Mono',monospace;font-size:10px;color:var(--accent);
+  background:rgba(56,189,248,.1);padding:2px 7px;border-radius:4px;white-space:nowrap}
+.item-name{flex:1;font-size:12px;color:var(--text)}
+.item-name small{font-size:10px;color:var(--muted);margin-left:4px}
+.item-sector{font-size:10px;color:var(--muted);white-space:nowrap;
+  background:rgba(255,255,255,.04);padding:2px 7px;border-radius:4px}
+.btn-del{background:transparent;border:none;color:var(--muted);cursor:pointer;
+  font-size:16px;padding:2px 6px;border-radius:5px;transition:all .15s;line-height:1}
+.btn-del:hover{background:rgba(248,113,113,.15);color:var(--dn)}
+
+/* 追加フォーム */
+.add-section{border-top:1px solid var(--border);padding-top:18px;margin-top:4px}
+.add-title{font-size:12px;font-weight:500;color:var(--text);margin-bottom:12px}
+.add-row{display:grid;grid-template-columns:120px 1fr;gap:8px;margin-bottom:8px;align-items:start}
+.add-row-3{display:grid;grid-template-columns:1fr 1fr 120px;gap:8px;margin-bottom:8px;align-items:end}
+.field-label{font-size:10px;color:var(--muted);margin-bottom:4px;display:block}
+input.field,select.field{width:100%;height:36px;background:rgba(255,255,255,.05);
+  border:1px solid var(--border);border-radius:8px;color:var(--text);
+  padding:0 12px;font-size:12px;font-family:'Noto Sans JP',sans-serif;
+  outline:none;transition:border-color .2s}
+input.field:focus,select.field:focus{border-color:var(--accent)}
+input.field::placeholder{color:var(--muted)}
+select.field option{background:var(--bg2)}
+
+/* 検索結果バッジ */
+#search-result{display:none;margin-top:8px;font-size:11px;padding:8px 12px;
+  border-radius:7px;line-height:1.6}
+#search-result.ok {background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.2);color:#6ee7b7}
+#search-result.err{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);color:var(--dn-txt)}
+
+/* JSON export/import */
+.json-section{border-top:1px solid var(--border);padding-top:16px;margin-top:4px}
+.json-title{font-size:12px;font-weight:500;color:var(--text);margin-bottom:10px}
+.json-btns{display:flex;gap:8px;flex-wrap:wrap}
+.btn-sm{display:flex;align-items:center;gap:5px;padding:7px 14px;border-radius:7px;
+  cursor:pointer;font-size:11px;font-family:'Noto Sans JP',sans-serif;transition:all .18s;border:1px solid}
+.btn-export{background:rgba(56,189,248,.08);border-color:rgba(56,189,248,.25);color:var(--accent)}
+.btn-export:hover{background:rgba(56,189,248,.15)}
+.btn-import{background:rgba(129,140,248,.08);border-color:rgba(129,140,248,.25);color:#a5b4fc}
+.btn-import:hover{background:rgba(129,140,248,.15)}
+#import-file{display:none}
+
+/* save status */
+#save-status{font-size:11px;margin-top:8px;display:none;padding:6px 10px;
+  border-radius:6px;text-align:center}
+#save-status.ok {background:rgba(52,211,153,.1);color:#6ee7b7}
+#save-status.err{background:rgba(248,113,113,.1);color:var(--dn-txt)}
+
+/* report modal */
+.overlay-rpt{position:fixed;inset:0;background:rgba(0,0,0,.82);display:none;
+  align-items:flex-start;justify-content:center;z-index:950;backdrop-filter:blur(4px);
+  overflow-y:auto;padding:40px 20px}
+.overlay-rpt.open{display:flex}
 .rpt{background:var(--bg2);border:1px solid var(--border);border-radius:14px;
   padding:28px;max-width:900px;width:100%;position:relative}
 .rpt h2{font-size:17px;margin-bottom:4px}
@@ -124,16 +208,19 @@ body::before{content:'';position:fixed;inset:0;
   color:var(--muted);cursor:pointer;font-size:20px}
 .rpt-x:hover{color:var(--text)}
 .rpt-tbl{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px}
-.rpt-tbl th{background:var(--bg3);padding:8px 10px;text-align:left;color:var(--muted);
-  font-weight:500;border-bottom:1px solid var(--border)}
-.rpt-tbl td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle;
-  font-family:'Space Mono',monospace;font-size:11px}
+.rpt-tbl th{background:var(--bg3);padding:8px 10px;text-align:left;
+  color:var(--muted);font-weight:500;border-bottom:1px solid var(--border)}
+.rpt-tbl td{padding:8px 10px;border-bottom:1px solid var(--border);
+  vertical-align:middle;font-family:'Space Mono',monospace;font-size:11px}
 .rpt-tbl td.nm{font-family:'Noto Sans JP',sans-serif;font-size:12px}
-.rpt-ttl{font-size:13px;font-weight:500;margin:16px 0 8px;border-left:3px solid var(--accent);padding-left:8px}
-.bdg{font-size:9px;padding:1px 6px;border-radius:3px;background:rgba(129,140,248,.15);color:#a5b4fc}
+.rpt-ttl{font-size:13px;font-weight:500;margin:16px 0 8px;
+  border-left:3px solid var(--accent);padding-left:8px}
+.bdg{font-size:9px;padding:1px 6px;border-radius:3px;
+  background:rgba(129,140,248,.15);color:#a5b4fc}
 
 @media(max-width:768px){.summary{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr 1fr}}
-@media(max-width:480px){.grid{grid-template-columns:1fr}.summary{grid-template-columns:1fr 1fr}}
+@media(max-width:480px){.grid{grid-template-columns:1fr}.summary{grid-template-columns:1fr 1fr}
+  .add-row{grid-template-columns:1fr}.add-row-3{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body>
@@ -143,7 +230,7 @@ body::before{content:'';position:fixed;inset:0;
       <div class="hdr-icon">JP</div>
       <div>
         <div class="hdr-title">PORTFOLIO MONITOR</div>
-        <div class="hdr-sub" id="hdr-sub">Yahoo Finance (yfinance) · Render クラウド</div>
+        <div class="hdr-sub" id="hdr-sub">Yahoo Finance · Render クラウド</div>
       </div>
     </div>
     <div class="hdr-r">
@@ -152,13 +239,11 @@ body::before{content:'';position:fixed;inset:0;
     </div>
   </div>
 
-  <div id="sleep-bar">
-    ⏳ サーバーが起動中です（初回または長時間未使用時は30〜60秒かかる場合があります）...
-  </div>
+  <div id="sleep-bar">⏳ サーバー起動中です（初回は30〜60秒かかる場合があります）...</div>
   <div id="err-bar"></div>
 
   <div class="summary">
-    <div class="sc"><div class="sc-l">取得 / 合計</div><div class="sc-v" id="s-cnt">— / 15</div><div class="sc-s">Yahoo Finance</div></div>
+    <div class="sc"><div class="sc-l">取得 / 合計</div><div class="sc-v" id="s-cnt">— / —</div><div class="sc-s">Yahoo Finance</div></div>
     <div class="sc"><div class="sc-l">上昇 / 下落</div><div class="sc-v" id="s-ud" style="font-size:15px">— / —</div><div class="sc-s" id="s-date">直近終値</div></div>
     <div class="sc"><div class="sc-l">平均変動率</div><div class="sc-v" id="s-avg">—</div><div class="sc-s">全取得銘柄</div></div>
     <div class="sc"><div class="sc-l">最高上昇</div><div class="sc-v" id="s-top" style="font-size:13px">—</div><div class="sc-s" id="s-topn">—</div></div>
@@ -177,18 +262,24 @@ body::before{content:'';position:fixed;inset:0;
 
   <div class="footer">
     <div class="footer-note">
-      データ: Yahoo Finance (yfinance) · Render 無料ホスティング<br>
-      ※ 15分間未使用後はスリープ状態になります（次回アクセス時に自動復帰）
+      データ: Yahoo Finance · Render 無料ホスティング<br>
+      ※ 15分間未使用後スリープ → 次回アクセス時に自動復帰
     </div>
-    <div style="display:flex;gap:9px;align-items:center">
-      <button class="btn-rpt" id="btn-rpt" disabled>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-edit" onclick="openEdit()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+        </svg>銘柄編集
+      </button>
+      <button class="btn btn-rpt" id="btn-rpt" disabled>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
           <polyline points="14 2 14 8 20 8"/>
         </svg>分析レポート
       </button>
-      <button class="btn-refresh" id="btn-ref" onclick="loadQuotes()">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <button class="btn btn-primary" id="btn-ref" onclick="loadQuotes()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="23 4 23 10 17 10"/>
           <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
         </svg>株価を更新
@@ -197,9 +288,104 @@ body::before{content:'';position:fixed;inset:0;
   </div>
 </div>
 
-<div class="overlay" id="ov">
+<!-- ═══ EDIT MODAL ═══ -->
+<div class="overlay" id="edit-overlay">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div class="modal-title">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:6px">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+        </svg>ポートフォリオ編集
+      </div>
+      <button class="modal-x" onclick="closeEdit()">×</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- 銘柄リスト -->
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
+        ≡ をドラッグして順序を変更できます
+      </div>
+      <ul class="edit-list" id="edit-list"></ul>
+
+      <!-- 銘柄追加 -->
+      <div class="add-section">
+        <div class="add-title">銘柄を追加</div>
+
+        <div class="add-row">
+          <div>
+            <span class="field-label">証券コード（4桁）</span>
+            <div style="display:flex;gap:6px">
+              <input class="field" id="add-code" placeholder="例: 9433" maxlength="4"
+                style="flex:1" onkeydown="if(event.key==='Enter')checkCode()">
+              <button class="btn-sm btn-export" onclick="checkCode()" style="white-space:nowrap;height:36px">確認</button>
+            </div>
+          </div>
+          <div>
+            <span class="field-label">セクター</span>
+            <select class="field" id="add-sector">
+              <option>テクノロジー</option>
+              <option>商社</option>
+              <option>銀行</option>
+              <option>エンタメ</option>
+              <option>通信・投資</option>
+              <option>その他</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="search-result"></div>
+
+        <div class="add-row-3" id="add-names-row" style="display:none">
+          <div>
+            <span class="field-label">銘柄名（日本語）</span>
+            <input class="field" id="add-ja" placeholder="例: KDDI">
+          </div>
+          <div>
+            <span class="field-label">銘柄名（英語）</span>
+            <input class="field" id="add-en" placeholder="例: KDDI Corp">
+          </div>
+          <button class="btn-sm btn-export" onclick="addStock()"
+            style="height:36px;margin-top:auto">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            追加
+          </button>
+        </div>
+      </div>
+
+      <!-- JSON export/import -->
+      <div class="json-section">
+        <div class="json-title">設定の保存・読み込み</div>
+        <div class="json-btns">
+          <button class="btn-sm btn-export" onclick="exportJSON()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            JSONエクスポート
+          </button>
+          <button class="btn-sm btn-import" onclick="document.getElementById('import-file').click()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            JSONインポート
+          </button>
+          <input type="file" id="import-file" accept=".json" onchange="importJSON(event)">
+        </div>
+      </div>
+
+      <div id="save-status"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-sm" onclick="closeEdit()"
+        style="background:transparent;border:1px solid var(--border);color:var(--muted)">キャンセル</button>
+      <button class="btn-sm btn-export" id="btn-save" onclick="savePortfolio()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        サーバーに保存
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ REPORT MODAL ═══ -->
+<div class="overlay-rpt" id="rpt-overlay">
   <div class="rpt">
-    <button class="rpt-x" onclick="document.getElementById('ov').classList.remove('open')">×</button>
+    <button class="rpt-x" onclick="document.getElementById('rpt-overlay').classList.remove('open')">×</button>
     <h2>📊 ポートフォリオ分析レポート</h2>
     <div class="rpt-sub" id="rpt-date">—</div>
     <div id="rpt-body"></div>
@@ -207,86 +393,102 @@ body::before{content:'';position:fixed;inset:0;
 </div>
 
 <script>
-const STOCKS=[
-  {c:'7741',ja:'ホーヤ',              n:'HOYA',           s:'テクノロジー'},
-  {c:'6740',ja:'ジャパンディスプレイ',n:'Japan Display',  s:'テクノロジー'},
-  {c:'6758',ja:'ソニーグループ',      n:'Sony Group',     s:'テクノロジー'},
-  {c:'8136',ja:'サンリオ',            n:'Sanrio',         s:'エンタメ'},
-  {c:'3350',ja:'メタプラネット',      n:'Metaplanet',     s:'テクノロジー'},
-  {c:'7974',ja:'任天堂',              n:'Nintendo',       s:'エンタメ'},
-  {c:'9984',ja:'ソフトバンクG',       n:'SoftBank Group', s:'通信・投資'},
-  {c:'8058',ja:'三菱商事',            n:'Mitsubishi Corp',s:'商社'},
-  {c:'8031',ja:'三井物産',            n:'Mitsui & Co',   s:'商社'},
-  {c:'8001',ja:'伊藤忠商事',          n:'ITOCHU',         s:'商社'},
-  {c:'8002',ja:'丸紅',                n:'Marubeni',       s:'商社'},
-  {c:'8053',ja:'住友商事',            n:'Sumitomo Corp',  s:'商社'},
-  {c:'8306',ja:'三菱UFJ',             n:'MUFG',           s:'銀行'},
-  {c:'8411',ja:'みずほFG',            n:'Mizuho FG',      s:'銀行'},
-  {c:'8316',ja:'三井住友FG',          n:'SMFG',           s:'銀行'},
-];
-let allData=[];
+// ════════════════════════════════════════════
+// 状態管理
+// ════════════════════════════════════════════
+let portfolio = [];   // 現在の銘柄リスト（編集中はeditPortfolioで管理）
+let editPortfolio = [];  // 編集モーダル内の作業コピー
+let quoteData = [];   // 最新株価データ
 
-function shimmer(){
-  document.getElementById('grid').innerHTML=STOCKS.map(s=>`
-    <div class="card flat loading" id="card-${s.c}" data-sec="${s.s}">
-      <div class="card-h"><span class="card-code">${s.c}</span><span class="card-sec">${s.s}</span></div>
-      <div class="card-name">${s.ja}<br><small>${s.n}</small></div>
+// ════════════════════════════════════════════
+// 初期化
+// ════════════════════════════════════════════
+async function init() {
+  await loadPortfolio();
+  shimmer();
+  loadQuotes();
+}
+
+// ════════════════════════════════════════════
+// ポートフォリオ読み込み (GET /api/portfolio)
+// ════════════════════════════════════════════
+async function loadPortfolio() {
+  try {
+    const r = await fetch('/api/portfolio');
+    portfolio = await r.json();
+  } catch(e) {
+    console.error('loadPortfolio:', e);
+  }
+}
+
+// ════════════════════════════════════════════
+// 株価取得 (POST /api/quotes)
+// ════════════════════════════════════════════
+async function loadQuotes() {
+  if (!portfolio.length) return;
+  const btn = document.getElementById('btn-ref');
+  btn.disabled = true; btn.classList.add('spin');
+  document.getElementById('err-bar').style.display = 'none';
+
+  const sleepTimer = setTimeout(() => {
+    document.getElementById('sleep-bar').style.display = 'block';
+  }, 2000);
+
+  shimmer();
+  try {
+    const r = await fetch('/api/quotes', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(portfolio),
+    });
+    clearTimeout(sleepTimer);
+    document.getElementById('sleep-bar').style.display = 'none';
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    quoteData = await r.json();
+    renderCards(quoteData);
+    updateSummary(quoteData);
+    const now = new Date().toLocaleTimeString('ja-JP');
+    document.getElementById('lupd').textContent = '更新: ' + now;
+    document.getElementById('hdr-sub').textContent =
+      `Yahoo Finance · Render クラウド · ${now}`;
+    document.getElementById('btn-rpt').disabled = false;
+  } catch(e) {
+    clearTimeout(sleepTimer);
+    document.getElementById('sleep-bar').style.display = 'none';
+    const eb = document.getElementById('err-bar');
+    eb.style.display = 'block';
+    eb.textContent = `⚠️ 取得エラー: ${e.message}`;
+  }
+  btn.disabled = false; btn.classList.remove('spin');
+}
+
+// ════════════════════════════════════════════
+// カード描画
+// ════════════════════════════════════════════
+function shimmer() {
+  document.getElementById('grid').innerHTML = portfolio.map(s => `
+    <div class="card flat loading" id="card-${s.code}" data-sec="${s.sector}">
+      <div class="card-h"><span class="card-code">${s.code}</span><span class="card-sec">${s.sector}</span></div>
+      <div class="card-name">${s.ja}<br><small>${s.en}</small></div>
       <div style="height:72px"></div>
     </div>`).join('');
 }
 
-async function loadQuotes(){
-  const btn=document.getElementById('btn-ref');
-  btn.disabled=true; btn.classList.add('spin');
-  document.getElementById('err-bar').style.display='none';
-
-  // 슬립 복귀 중 안내 (2초 이상 걸리면 표시)
-  const sleepTimer=setTimeout(()=>{
-    document.getElementById('sleep-bar').style.display='block';
-  }, 2000);
-
-  shimmer();
-  try{
-    const r=await fetch('/api/quotes');
-    clearTimeout(sleepTimer);
-    document.getElementById('sleep-bar').style.display='none';
-    if(!r.ok) throw new Error(`HTTP ${r.status}`);
-    const data=await r.json();
-    if(data.error) throw new Error(data.error);
-    allData=data;
-    renderCards(data);
-    updateSummary(data);
-    const now=new Date().toLocaleTimeString('ja-JP');
-    document.getElementById('lupd').textContent='更新: '+now;
-    document.getElementById('hdr-sub').textContent=
-      `Yahoo Finance (yfinance) · Render クラウド · 取得: ${now}`;
-    document.getElementById('btn-rpt').disabled=false;
-  }catch(e){
-    clearTimeout(sleepTimer);
-    document.getElementById('sleep-bar').style.display='none';
-    const eb=document.getElementById('err-bar');
-    eb.style.display='block';
-    eb.textContent=`⚠️ 取得エラー: ${e.message}`;
-    console.error(e);
-  }
-  btn.disabled=false; btn.classList.remove('spin');
-}
-
-function renderCards(data){
-  const g=document.getElementById('grid'); g.innerHTML='';
-  data.forEach(s=>{
-    const up=s.ok&&s.pct>0.05,dn=s.ok&&s.pct<-0.05;
-    const d=document.createElement('div');
-    d.className='card '+(up?'up':dn?'dn':'flat');
-    d.id='card-'+s.code; d.dataset.sec=s.sector;
-    if(!s.ok){
-      d.innerHTML=`
+function renderCards(data) {
+  const g = document.getElementById('grid'); g.innerHTML = '';
+  data.forEach(s => {
+    const up = s.ok && s.pct > 0.05, dn = s.ok && s.pct < -0.05;
+    const d = document.createElement('div');
+    d.className = 'card ' + (up?'up':dn?'dn':'flat');
+    d.id = 'card-' + s.code; d.dataset.sec = s.sector;
+    if (!s.ok) {
+      d.innerHTML = `
         <div class="card-h"><span class="card-code">${s.code}</span><span class="card-sec">${s.sector}</span></div>
         <div class="card-name">${s.ja}<br><small>${s.en}</small></div>
         <div style="font-size:11px;color:var(--muted);margin-top:12px">取得失敗</div>`;
-    }else{
-      const sp=s.pct>=0?'+':'',sc=s.change>=0?'+':'';
-      d.innerHTML=`
+    } else {
+      const sp = s.pct>=0?'+':'', sc = s.change>=0?'+':'';
+      d.innerHTML = `
         <div class="card-h"><span class="card-code">${s.code}</span><span class="card-sec">${s.sector}</span></div>
         <div class="card-name">${s.ja}<br><small>${s.en}</small></div>
         <div class="card-row">
@@ -303,19 +505,19 @@ function renderCards(data){
         </div>`;
     }
     g.appendChild(d);
-    if(s.ok) setTimeout(()=>spark(s.code,s.pct),60);
+    if (s.ok) setTimeout(() => spark(s.code, s.pct), 60);
   });
 }
 
-function spark(code,pct){
-  const cv=document.getElementById('sp-'+code); if(!cv)return;
-  const w=cv.width=cv.offsetWidth||200,h=cv.height=32;
-  const ctx=cv.getContext('2d'); ctx.clearRect(0,0,w,h);
+function spark(code, pct) {
+  const cv = document.getElementById('sp-'+code); if (!cv) return;
+  const w = cv.width = cv.offsetWidth||200, h = cv.height = 32;
+  const ctx = cv.getContext('2d'); ctx.clearRect(0,0,w,h);
   const n=20,v=[0];
   for(let i=1;i<n;i++) v.push(pct/100*(i/n)+(Math.random()-.5)*0.0015);
   v.push(pct/100);
   const mn=Math.min(...v),mx=Math.max(...v),r=mx-mn||.001;
-  const tx=i=>(i/(v.length-1))*w,ty=q=>h-((q-mn)/r)*(h-5)-2;
+  const tx=i=>(i/(v.length-1))*w, ty=q=>h-((q-mn)/r)*(h-5)-2;
   const isU=pct>=0;
   const g=ctx.createLinearGradient(0,0,0,h);
   g.addColorStop(0,isU?'rgba(52,211,153,.18)':'rgba(248,113,113,.18)');
@@ -328,11 +530,11 @@ function spark(code,pct){
   ctx.strokeStyle=isU?'#34d399':'#f87171';ctx.lineWidth=1.5;ctx.stroke();
 }
 
-function updateSummary(data){
-  const ok=data.filter(s=>s.ok);
-  document.getElementById('s-cnt').textContent=`${ok.length}/15`;
-  if(!ok.length)return;
-  const ups=ok.filter(s=>s.pct>0.05).length,dns=ok.filter(s=>s.pct<-0.05).length;
+function updateSummary(data) {
+  const ok = data.filter(s=>s.ok);
+  document.getElementById('s-cnt').textContent = `${ok.length}/${data.length}`;
+  if (!ok.length) return;
+  const ups=ok.filter(s=>s.pct>0.05).length, dns=ok.filter(s=>s.pct<-0.05).length;
   const avg=ok.reduce((a,s)=>a+s.pct,0)/ok.length;
   const dates=ok.map(s=>s.date).filter(Boolean).sort();
   const lat=dates.length?dates[dates.length-1]:'—';
@@ -356,10 +558,197 @@ function fSec(sec,btn){
   });
 }
 
-document.getElementById('btn-rpt').addEventListener('click',()=>{
-  const ok=allData.filter(s=>s.ok).sort((a,b)=>b.pct-a.pct);
-  if(!ok.length)return;
-  const ups=ok.filter(s=>s.pct>0).length,dns=ok.filter(s=>s.pct<0).length;
+// ════════════════════════════════════════════
+// 編集モーダル
+// ════════════════════════════════════════════
+let sortable = null;
+
+function openEdit() {
+  editPortfolio = JSON.parse(JSON.stringify(portfolio));
+  renderEditList();
+  document.getElementById('search-result').style.display='none';
+  document.getElementById('add-names-row').style.display='none';
+  document.getElementById('add-code').value='';
+  document.getElementById('add-ja').value='';
+  document.getElementById('add-en').value='';
+  document.getElementById('save-status').style.display='none';
+  document.getElementById('edit-overlay').classList.add('open');
+}
+
+function closeEdit() {
+  document.getElementById('edit-overlay').classList.remove('open');
+}
+
+function renderEditList() {
+  const ul = document.getElementById('edit-list');
+  ul.innerHTML = editPortfolio.map((s,i) => `
+    <li class="edit-item" data-i="${i}">
+      <span class="drag-handle">≡</span>
+      <span class="item-code">${s.code}</span>
+      <span class="item-name">${s.ja}<small>${s.en}</small></span>
+      <span class="item-sector">${s.sector}</span>
+      <button class="btn-del" onclick="deleteStock(${i})" title="削除">✕</button>
+    </li>`).join('');
+
+  // Sortable.js でドラッグ&ドロップ
+  if (sortable) sortable.destroy();
+  sortable = Sortable.create(ul, {
+    handle: '.drag-handle',
+    animation: 150,
+    ghostClass: 'sortable-ghost',
+    chosenClass: 'sortable-chosen',
+    onEnd(evt) {
+      const moved = editPortfolio.splice(evt.oldIndex, 1)[0];
+      editPortfolio.splice(evt.newIndex, 0, moved);
+    }
+  });
+}
+
+function deleteStock(i) {
+  editPortfolio.splice(i, 1);
+  renderEditList();
+}
+
+// ── 銘柄コード確認 ──────────────────────────────
+async function checkCode() {
+  const code = document.getElementById('add-code').value.trim();
+  const sr   = document.getElementById('search-result');
+  const nr   = document.getElementById('add-names-row');
+  sr.style.display = 'block';
+  sr.className = 'ok';
+  sr.textContent = '確認中...';
+
+  try {
+    const r = await fetch(`/api/search?code=${encodeURIComponent(code)}`);
+    const d = await r.json();
+    if (!d.found) {
+      sr.className = 'err';
+      sr.textContent = `❌ ${d.error || '銘柄が見つかりません'}`;
+      nr.style.display = 'none';
+      return;
+    }
+    sr.className = 'ok';
+    sr.textContent = `✓ ${d.code} — ${d.name_en}  現在値: ¥${d.price?.toLocaleString() || '—'}`;
+    document.getElementById('add-en').value = d.name_en || '';
+    document.getElementById('add-ja').value = d.name_en || '';  // 仮表示、ユーザーが修正
+    nr.style.display = 'grid';
+  } catch(e) {
+    sr.className = 'err';
+    sr.textContent = `❌ エラー: ${e.message}`;
+    nr.style.display = 'none';
+  }
+}
+
+// ── 銘柄追加 ──────────────────────────────────
+function addStock() {
+  const code   = document.getElementById('add-code').value.trim().padStart(4,'0');
+  const ja     = document.getElementById('add-ja').value.trim();
+  const en     = document.getElementById('add-en').value.trim();
+  const sector = document.getElementById('add-sector').value;
+
+  if (!code || !ja || !en) {
+    alert('コード・銘柄名（日本語・英語）を入力してください');
+    return;
+  }
+  if (editPortfolio.find(s=>s.code===code)) {
+    alert('この銘柄は既に追加されています');
+    return;
+  }
+
+  editPortfolio.push({ code, ja, en, sector });
+  renderEditList();
+
+  // フォームリセット
+  document.getElementById('add-code').value='';
+  document.getElementById('add-ja').value='';
+  document.getElementById('add-en').value='';
+  document.getElementById('add-names-row').style.display='none';
+  document.getElementById('search-result').style.display='none';
+}
+
+// ── サーバーに保存 ──────────────────────────────
+async function savePortfolio() {
+  const btn = document.getElementById('btn-save');
+  const ss  = document.getElementById('save-status');
+  btn.disabled = true;
+  btn.textContent = '保存中...';
+  ss.style.display = 'block';
+  ss.className = 'ok';
+  ss.textContent = '⏳ GitHubに保存中...';
+
+  try {
+    const r = await fetch('/api/portfolio', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(editPortfolio),
+    });
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || `HTTP ${r.status}`);
+
+    portfolio = JSON.parse(JSON.stringify(editPortfolio));
+    ss.className = 'ok';
+    ss.textContent = `✓ ${portfolio.length}銘柄をGitHubに保存しました`;
+
+    setTimeout(() => {
+      closeEdit();
+      shimmer();
+      loadQuotes();
+    }, 1200);
+  } catch(e) {
+    ss.className = 'err';
+    ss.textContent = `❌ 保存失敗: ${e.message}`;
+  }
+  btn.disabled = false;
+  btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+    <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+    サーバーに保存`;
+}
+
+// ════════════════════════════════════════════
+// JSON エクスポート / インポート
+// ════════════════════════════════════════════
+function exportJSON() {
+  const data = JSON.stringify(editPortfolio, null, 2);
+  const blob = new Blob([data], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `portfolio_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+}
+
+function importJSON(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (!Array.isArray(data)) throw new Error('配列形式が必要です');
+      // バリデーション
+      data.forEach((s,i) => {
+        if (!s.code||!s.ja||!s.en||!s.sector)
+          throw new Error(`${i+1}番目の銘柄にcode/ja/en/sectorが必要です`);
+      });
+      editPortfolio = data;
+      renderEditList();
+      const ss = document.getElementById('save-status');
+      ss.style.display='block'; ss.className='ok';
+      ss.textContent=`✓ ${data.length}銘柄をインポートしました（「サーバーに保存」で確定）`;
+    } catch(err) {
+      alert('インポート失敗: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+// ════════════════════════════════════════════
+// 分析レポート
+// ════════════════════════════════════════════
+document.getElementById('btn-rpt').addEventListener('click', () => {
+  const ok = quoteData.filter(s=>s.ok).sort((a,b)=>b.pct-a.pct);
+  if (!ok.length) return;
+  const ups=ok.filter(s=>s.pct>0).length, dns=ok.filter(s=>s.pct<0).length;
   const avg=ok.reduce((a,s)=>a+s.pct,0)/(ok.length||1);
   const sm={};ok.forEach(s=>{if(!sm[s.sector])sm[s.sector]=[];sm[s.sector].push(s.pct);});
   const sa=Object.entries(sm).map(([n,v])=>({n,a:v.reduce((a,x)=>a+x,0)/v.length})).sort((a,b)=>b.a-a.a);
@@ -379,7 +768,7 @@ document.getElementById('btn-rpt').addEventListener('click',()=>{
     <td>${s.a>=.5?'✅ 好調':s.a>=0?'🟡 横ばい':s.a>=-.5?'🟡 軟調':'⚠️ 要注意'}</td>
   </tr>`).join('');
   const now=new Date().toLocaleString('ja-JP');
-  document.getElementById('rpt-date').textContent=`生成: ${now} · Yahoo Finance (yfinance)`;
+  document.getElementById('rpt-date').textContent=`生成: ${now} · Yahoo Finance`;
   document.getElementById('rpt-body').innerHTML=`
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">
       ${[['取得',ok.length,''],['上昇',ups,'color:#34d399'],['下落',dns,'color:#f87171'],
@@ -398,16 +787,19 @@ document.getElementById('btn-rpt').addEventListener('click',()=>{
       <th>セクター</th><th>平均変動率</th><th>状況</th>
     </tr></thead><tbody>${sr}</tbody></table>
     <div style="font-size:10px;color:#64748b;margin-top:14px;text-align:center">
-      Yahoo Finance (yfinance) · 投資判断は自己責任でお願いします。
+      Yahoo Finance · 投資判断は自己責任でお願いします。
     </div>`;
-  document.getElementById('ov').classList.add('open');
-});
-document.getElementById('ov').addEventListener('click',e=>{
-  if(e.target===e.currentTarget)e.currentTarget.classList.remove('open');
+  document.getElementById('rpt-overlay').classList.add('open');
 });
 
-shimmer();
-loadQuotes();
+document.getElementById('rpt-overlay').addEventListener('click', e=>{
+  if(e.target===e.currentTarget) e.currentTarget.classList.remove('open');
+});
+document.getElementById('edit-overlay').addEventListener('click', e=>{
+  if(e.target===e.currentTarget) closeEdit();
+});
+
+init();
 </script>
 </body>
 </html>
