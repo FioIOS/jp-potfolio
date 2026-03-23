@@ -241,9 +241,10 @@ select.field option{background:var(--bg2)}
 
   <div id="sleep-bar">⏳ サーバー起動中です（初回は30〜60秒かかる場合があります）...</div>
   <div id="err-bar"></div>
+  <div id="group-bar" style="display:none;background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.2);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:11px;color:#7dd3fc;line-height:1.6"></div>
 
   <div class="summary">
-    <div class="sc"><div class="sc-l">取得 / 合計</div><div class="sc-v" id="s-cnt">— / —</div><div class="sc-s">Yahoo Finance</div></div>
+    <div class="sc"><div class="sc-l">取得 / 合計</div><div class="sc-v" id="s-cnt">— / —</div><div class="sc-s">Alpha Vantage</div></div>
     <div class="sc"><div class="sc-l">上昇 / 下落</div><div class="sc-v" id="s-ud" style="font-size:15px">— / —</div><div class="sc-s" id="s-date">直近終値</div></div>
     <div class="sc"><div class="sc-l">平均変動率</div><div class="sc-v" id="s-avg">—</div><div class="sc-s">全取得銘柄</div></div>
     <div class="sc"><div class="sc-l">最高上昇</div><div class="sc-v" id="s-top" style="font-size:13px">—</div><div class="sc-s" id="s-topn">—</div></div>
@@ -262,8 +263,8 @@ select.field option{background:var(--bg2)}
 
   <div class="footer">
     <div class="footer-note">
-      データ: Yahoo Finance · Render 無料ホスティング<br>
-      ※ 15分間未使用後スリープ → 次回アクセス時に自動復帰
+      データ: Alpha Vantage · Render 無料ホスティング<br>
+      ※ 1回の更新で5銘柄を取得。3回更新で全銘柄カバー(日25콜制限対策)
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button class="btn btn-edit" onclick="openEdit()">
@@ -424,15 +425,28 @@ async function loadPortfolio() {
 // ════════════════════════════════════════════
 // 株価取得 (POST /api/quotes)
 // ════════════════════════════════════════════
+let updateCount = 0;
 async function loadQuotes() {
   if (!portfolio.length) return;
   const btn = document.getElementById('btn-ref');
   btn.disabled = true; btn.classList.add('spin');
   document.getElementById('err-bar').style.display = 'none';
+  document.getElementById('group-bar').style.display = 'none';
+
+  // 取得開始前にグループ情報を表示
+  const n = portfolio.length;
+  const size = Math.ceil(n / 3);
+  const gi = updateCount % 3;
+  const gStart = gi * size + 1;
+  const gEnd = Math.min(gStart + size - 1, n);
+  const gBar = document.getElementById('group-bar');
+  gBar.style.display = 'block';
+  gBar.innerHTML = `⏳ グループ ${gi+1}/3 を取得中 (${gStart}〜${gEnd}番目, 約60秒)... ` +
+    `<span style="color:#94a3b8;font-size:10px">Alpha Vantage 日25콜制限のため5銘柄ずつ取得。3回更新で全${n}銘柄をカバー。</span>`;
 
   const sleepTimer = setTimeout(() => {
     document.getElementById('sleep-bar').style.display = 'block';
-  }, 2000);
+  }, 3000);
 
   shimmer();
   try {
@@ -445,16 +459,26 @@ async function loadQuotes() {
     document.getElementById('sleep-bar').style.display = 'none';
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     quoteData = await r.json();
+    updateCount++;
     renderCards(quoteData);
     updateSummary(quoteData);
     const now = new Date().toLocaleTimeString('ja-JP');
+    const ok = quoteData.filter(s=>s.ok).length;
     document.getElementById('lupd').textContent = '更新: ' + now;
     document.getElementById('hdr-sub').textContent =
-      `Yahoo Finance · Render クラウド · ${now}`;
+      `Alpha Vantage · Render クラウド · ${now}`;
     document.getElementById('btn-rpt').disabled = false;
+
+    // 取得済み件数を表示
+    const nextGi = updateCount % 3;
+    const nextStart = nextGi * size + 1;
+    const nextEnd = Math.min(nextStart + size - 1, n);
+    gBar.innerHTML = `✓ グループ ${gi+1}/3 取得完了 — ${ok}/${n}銘柄キャッシュ済 · ${now} ` +
+      (ok < n ? `<br><span style="color:#94a3b8;font-size:10px">「株価を更新」をもう一度押すとグループ${nextGi+1} (${nextStart}〜${nextEnd}番目) を取得します。3回押すと全銘柄揃います。</span>` : '');
   } catch(e) {
     clearTimeout(sleepTimer);
     document.getElementById('sleep-bar').style.display = 'none';
+    document.getElementById('group-bar').style.display = 'none';
     const eb = document.getElementById('err-bar');
     eb.style.display = 'block';
     eb.textContent = `⚠️ 取得エラー: ${e.message}`;
