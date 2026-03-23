@@ -100,14 +100,22 @@ def github_put_file(filepath, content_str, sha=None, message="Update portfolio")
 
 
 # ════════════════════════════════════════════════════════
-# 株価取得 (Yahoo Finance v8 API)
+# 株価取得 (Yahoo Finance v7 Quote API)
+# v7はchange/changePercentをYahoo側で計算して返すため正確。
+# v8のmeta値を手動計算するより誤差が出ない。
 # ════════════════════════════════════════════════════════
 
 def fetch_quote(code: str) -> dict:
     ticker = f"{code}.T"
-    url = f"https://query2.finance.yahoo.com/v8/finance/chart/{ticker}"
-    params = {"range": "5d", "interval": "1d",
-              "includePrePost": "false", "events": "div,splits"}
+    url = "https://query2.finance.yahoo.com/v7/finance/quote"
+    params = {
+        "symbols": ticker,
+        "fields": (
+            "regularMarketPrice,regularMarketChange,"
+            "regularMarketChangePercent,regularMarketPreviousClose,"
+            "regularMarketVolume,regularMarketTime"
+        ),
+    }
     try:
         r = SESSION.get(url, params=params, timeout=15)
         r.raise_for_status()
@@ -118,23 +126,36 @@ def fetch_quote(code: str) -> dict:
         return {"ok": False, "error": str(e)}
 
     try:
-        result = data["chart"]["result"][0]
-        meta   = result["meta"]
-        price  = float(meta.get("regularMarketPrice") or meta.get("previousClose", 0))
-        prev   = float(meta.get("previousClose") or meta.get("chartPreviousClose", price))
+        results = data.get("quoteResponse", {}).get("result", [])
+        if not results:
+            return {"ok": False, "error": "no result"}
+
+        q     = results[0]
+        price = q.get("regularMarketPrice")
         if not price:
             return {"ok": False, "error": "no price"}
-        chg = price - prev
-        pct = (chg / prev * 100) if prev else 0.0
-        try:
-            ts_list = result.get("timestamp", [])
-            date = datetime.utcfromtimestamp(ts_list[-1]).strftime("%Y-%m-%d") if ts_list else datetime.now().strftime("%Y-%m-%d")
-        except Exception:
-            date = datetime.now().strftime("%Y-%m-%d")
-        vol = int(meta.get("regularMarketVolume", 0) or 0)
-        return {"ok": True, "price": round(price), "prev": round(prev),
-                "change": round(chg), "pct": round(pct, 2),
-                "volume": vol, "date": date}
+
+        price = float(price)
+        prev  = float(q.get("regularMarketPreviousClose") or price)
+        # Yahoo Finance 公式計算値をそのまま使用（手動計算より正確）
+        chg   = float(q.get("regularMarketChange") or (price - prev))
+        pct   = float(q.get("regularMarketChangePercent") or
+                      ((chg / prev * 100) if prev else 0.0))
+        vol   = int(q.get("regularMarketVolume") or 0)
+
+        mkt_time = q.get("regularMarketTime")
+        date = (datetime.utcfromtimestamp(mkt_time).strftime("%Y-%m-%d")
+                if mkt_time else datetime.now().strftime("%Y-%m-%d"))
+
+        return {
+            "ok":     True,
+            "price":  round(price),
+            "prev":   round(prev),
+            "change": round(chg),
+            "pct":    round(pct, 2),
+            "volume": vol,
+            "date":   date,
+        }
     except Exception as e:
         return {"ok": False, "error": f"parse: {e}"}
 
@@ -160,27 +181,31 @@ def search():
         return jsonify({"found": False, "error": "コードは4桁の数字で入力してください"}), 400
 
     ticker = f"{code}.T"
-    url = f"https://query2.finance.yahoo.com/v8/finance/chart/{ticker}"
-    params = {"range": "1d", "interval": "1d"}
+    url = "https://query2.finance.yahoo.com/v7/finance/quote"
+    params = {
+        "symbols": ticker,
+        "fields": "regularMarketPrice,shortName,longName",
+    }
     try:
         r = SESSION.get(url, params=params, timeout=10)
         r.raise_for_status()
         data = r.json()
-        result = data["chart"]["result"][0]
-        meta   = result["meta"]
+        results = data.get("quoteResponse", {}).get("result", [])
+        if not results:
+            return jsonify({"found": False, "error": "データが見つかりません"})
 
-        name_raw = meta.get("longName") or meta.get("shortName") or ""
-        price    = meta.get("regularMarketPrice") or meta.get("previousClose")
+        q        = results[0]
+        name_raw = q.get("longName") or q.get("shortName") or ""
+        price    = q.get("regularMarketPrice")
 
         if not price:
             return jsonify({"found": False, "error": "データが見つかりません"})
 
-        # 英語名をそのまま使い、日本語名は入力してもらう
         return jsonify({
-            "found":    True,
-            "code":     code,
-            "name_en":  name_raw,
-            "price":    round(float(price)),
+            "found":   True,
+            "code":    code,
+            "name_en": name_raw,
+            "price":   round(float(price)),
         })
     except Exception as e:
         return jsonify({"found": False, "error": str(e)})
