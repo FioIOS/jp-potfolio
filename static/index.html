@@ -1,829 +1,261 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>JP Portfolio Monitor</title>
-<!-- Sortable.js for drag&drop -->
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap');
-:root{
-  --bg:#0b0f1c;--bg2:#111827;--bg3:#1a2235;--card:#131c2e;
-  --border:rgba(255,255,255,.07);--accent:#38bdf8;
-  --up:#34d399;--dn:#f87171;--text:#e2e8f0;--muted:#64748b;
-  --up-bg:rgba(52,211,153,.1);--dn-bg:rgba(248,113,113,.1);
-  --up-txt:#6ee7b7;--dn-txt:#fca5a5;
-}
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-serif;min-height:100vh}
-body::before{content:'';position:fixed;inset:0;
-  background-image:linear-gradient(rgba(56,189,248,.025) 1px,transparent 1px),
-  linear-gradient(90deg,rgba(56,189,248,.025) 1px,transparent 1px);
-  background-size:48px 48px;pointer-events:none;z-index:0}
-.page{position:relative;z-index:1;max-width:1480px;margin:0 auto;padding:24px}
+"""
+JP Portfolio Monitor — Google Sheets 版
+=========================================
+Google Sheets の GOOGLEFINANCE() 関数経由で TSE 株価を取得。
+完全無料・クラウド安定動作。
 
-/* ── Header ── */
-.hdr{display:flex;align-items:flex-start;justify-content:space-between;
-  margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:12px}
-.hdr-l{display:flex;align-items:center;gap:12px}
-.hdr-icon{width:38px;height:38px;background:linear-gradient(135deg,var(--accent),#818cf8);
-  border-radius:10px;display:flex;align-items:center;justify-content:center;
-  font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:#fff}
-.hdr-title{font-family:'Space Mono',monospace;font-size:17px;font-weight:700;letter-spacing:.04em}
-.hdr-sub{font-size:10px;color:var(--muted);margin-top:3px}
-.hdr-r{display:flex;align-items:center;gap:8px}
-.live{display:flex;align-items:center;gap:5px;background:rgba(52,211,153,.08);
-  border:1px solid rgba(52,211,153,.25);border-radius:20px;padding:3px 11px;
-  font-size:10px;color:var(--up);font-family:'Space Mono',monospace}
-.dot{width:5px;height:5px;border-radius:50%;background:var(--up);animation:pulse 1.5s infinite}
-@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.8)}}
+仕組み:
+  Sheets に GOOGLEFINANCE("TYO:7741","price") 等を設定
+  → Sheets を CSV エクスポート URL で公開
+  → Render サーバーが CSV を読んでダッシュボードへ返す
 
-/* ── Summary ── */
-.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
-.sc{background:var(--card);border:1px solid var(--border);border-radius:12px;
-  padding:14px 16px;position:relative;overflow:hidden}
-.sc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;
-  background:linear-gradient(90deg,var(--accent),transparent)}
-.sc-l{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
-.sc-v{font-size:22px;font-weight:700;font-family:'Space Mono',monospace}
-.sc-s{font-size:10px;color:var(--muted);margin-top:4px}
+環境変数 (Render ダッシュボードで設定):
+  SHEET_ID     : Google Sheets の ID ← 必須
+  SHEET_NAME   : シート名 (デフォルト: Sheet1)
+  GITHUB_TOKEN : GitHub Personal Access Token
+  GITHUB_REPO  : "ユーザー名/リポジトリ名"
+  GITHUB_BRANCH: ブランチ名 (デフォルト: main)
+"""
 
-/* ── Tabs ── */
-.tabs{display:flex;gap:7px;margin-bottom:12px;flex-wrap:wrap}
-.tab{padding:5px 14px;border-radius:20px;font-size:11px;cursor:pointer;
-  border:1px solid var(--border);color:var(--muted);background:transparent;transition:all .18s}
-.tab:hover{border-color:var(--accent);color:var(--accent)}
-.tab.active{background:rgba(56,189,248,.1);border-color:var(--accent);color:var(--accent)}
+import os, json, base64, csv, io, requests
+from flask import Flask, jsonify, request, send_from_directory
+from datetime import datetime
 
-/* ── Grid ── */
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
-.card{background:var(--card);border:1px solid var(--border);border-radius:12px;
-  padding:14px;transition:transform .15s,border-color .15s,box-shadow .15s;position:relative;overflow:hidden}
-.card:hover{transform:translateY(-2px);border-color:rgba(56,189,248,.3);box-shadow:0 8px 24px rgba(0,0,0,.4)}
-.card.up {border-left:3px solid var(--up)}.card.dn{border-left:3px solid var(--dn)}
-.card.flat{border-left:3px solid var(--muted)}
-.card.loading::after{content:'';position:absolute;inset:0;border-radius:12px;
-  background:linear-gradient(90deg,transparent 25%,rgba(255,255,255,.04) 50%,transparent 75%);
-  background-size:200% 100%;animation:sh 1.4s infinite}
-@keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
-.card-h{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:7px}
-.card-code{font-family:'Space Mono',monospace;font-size:10px;color:var(--accent);
-  background:rgba(56,189,248,.1);padding:2px 7px;border-radius:4px}
-.card-sec{font-size:9px;color:var(--muted);background:rgba(255,255,255,.04);padding:2px 7px;border-radius:4px}
-.card-name{font-size:13px;font-weight:500;margin-bottom:10px;line-height:1.35}
-.card-name small{font-size:10px;color:var(--muted);font-weight:300}
-.card-row{display:flex;justify-content:space-between;align-items:flex-end}
-.card-price{font-size:22px;font-weight:700;font-family:'Space Mono',monospace}
-.card-right{text-align:right}
-.card-pct{font-size:12px;font-weight:700;font-family:'Space Mono',monospace;
-  padding:2px 7px;border-radius:5px;display:inline-block}
-.pct-up{color:var(--up-txt);background:var(--up-bg)}
-.pct-dn{color:var(--dn-txt);background:var(--dn-bg)}
-.pct-fl{color:var(--muted);background:rgba(255,255,255,.05)}
-.card-yen{font-size:10px;color:var(--muted);margin-top:2px;font-family:'Space Mono',monospace}
-.card-meta{display:flex;justify-content:space-between;margin-top:7px;
-  font-size:9px;color:var(--muted);font-family:'Space Mono',monospace}
-.spark-wrap{margin-top:10px;height:32px}.spark{width:100%;height:32px}
+app = Flask(__name__, static_folder="static")
 
-/* ── Buttons ── */
-.btn{display:flex;align-items:center;gap:6px;padding:9px 18px;border-radius:9px;
-  cursor:pointer;font-size:12px;font-family:'Noto Sans JP',sans-serif;
-  font-weight:500;transition:all .18s;border:1px solid transparent}
-.btn-primary{background:linear-gradient(135deg,rgba(56,189,248,.15),rgba(129,140,248,.1));
-  border-color:rgba(56,189,248,.35);color:var(--accent)}
-.btn-primary:hover{background:linear-gradient(135deg,rgba(56,189,248,.25),rgba(129,140,248,.2));
-  transform:translateY(-1px)}
-.btn-primary:disabled{opacity:.4;cursor:not-allowed;transform:none}
-.btn-primary.spin svg{animation:spin .8s linear infinite}
-.btn-edit{background:rgba(129,140,248,.1);border-color:rgba(129,140,248,.3);color:#a5b4fc}
-.btn-edit:hover{background:rgba(129,140,248,.2)}
-.btn-rpt{background:linear-gradient(135deg,rgba(129,140,248,.2),rgba(56,189,248,.1));
-  border-color:rgba(129,140,248,.35);color:#a5b4fc}
-.btn-rpt:hover{background:linear-gradient(135deg,rgba(129,140,248,.3),rgba(56,189,248,.2))}
-.btn-rpt:disabled{opacity:.4;cursor:not-allowed}
-@keyframes spin{to{transform:rotate(360deg)}}
+SHEET_ID     = os.environ.get("SHEET_ID", "")
+SHEET_NAME   = os.environ.get("SHEET_NAME", "Sheet1")
+GITHUB_TOKEN  = os.environ.get("GITHUB_TOKEN", "")
+GITHUB_REPO   = os.environ.get("GITHUB_REPO", "")
+GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
+PORTFOLIO_FILE = "portfolio.json"
 
-/* ── Info bars ── */
-#sleep-bar,#err-bar{display:none;border-radius:8px;padding:10px 14px;
-  margin-bottom:14px;font-size:11px;line-height:1.6}
-#sleep-bar{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);color:#fcd34d}
-#err-bar{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);color:var(--dn-txt)}
+DEFAULT_PORTFOLIO = [
+    {"code":"7741","ja":"ホーヤ",              "en":"HOYA",           "sector":"テクノロジー"},
+    {"code":"6740","ja":"ジャパンディスプレイ","en":"Japan Display",  "sector":"テクノロジー"},
+    {"code":"6758","ja":"ソニーグループ",       "en":"Sony Group",     "sector":"テクノロジー"},
+    {"code":"8136","ja":"サンリオ",            "en":"Sanrio",         "sector":"エンタメ"},
+    {"code":"3350","ja":"メタプラネット",       "en":"Metaplanet",     "sector":"テクノロジー"},
+    {"code":"7974","ja":"任天堂",              "en":"Nintendo",       "sector":"エンタメ"},
+    {"code":"9984","ja":"ソフトバンクG",        "en":"SoftBank Group", "sector":"通信・投資"},
+    {"code":"8058","ja":"三菱商事",            "en":"Mitsubishi Corp","sector":"商社"},
+    {"code":"8031","ja":"三井物産",            "en":"Mitsui & Co",   "sector":"商社"},
+    {"code":"8001","ja":"伊藤忠商事",          "en":"ITOCHU",         "sector":"商社"},
+    {"code":"8002","ja":"丸紅",                "en":"Marubeni",       "sector":"商社"},
+    {"code":"8053","ja":"住友商事",            "en":"Sumitomo Corp",  "sector":"商社"},
+    {"code":"8306","ja":"三菱UFJ",             "en":"MUFG",           "sector":"銀行"},
+    {"code":"8411","ja":"みずほFG",            "en":"Mizuho FG",      "sector":"銀行"},
+    {"code":"8316","ja":"三井住友FG",          "en":"SMFG",           "sector":"銀行"},
+]
 
-/* ── Footer ── */
-.footer{margin-top:22px;padding-top:14px;border-top:1px solid var(--border);
-  display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
-.footer-note{font-size:10px;color:var(--muted);line-height:1.7}
+SESSION = requests.Session()
+SESSION.headers.update({"User-Agent": "jp-portfolio/1.0"})
 
-/* ════════════════════════════════════
-   EDIT MODAL
-═══════════════════════════════════════ */
-.overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;
-  align-items:flex-start;justify-content:center;z-index:900;backdrop-filter:blur(6px);
-  overflow-y:auto;padding:32px 16px}
-.overlay.open{display:flex}
 
-.modal{background:var(--bg2);border:1px solid var(--border);border-radius:16px;
-  width:100%;max-width:600px;position:relative;overflow:hidden}
-.modal-hdr{display:flex;align-items:center;justify-content:space-between;
-  padding:20px 24px 16px;border-bottom:1px solid var(--border)}
-.modal-title{font-size:15px;font-weight:500}
-.modal-x{background:transparent;border:none;color:var(--muted);
-  cursor:pointer;font-size:20px;line-height:1;padding:2px 6px}
-.modal-x:hover{color:var(--text)}
-.modal-body{padding:20px 24px;max-height:70vh;overflow-y:auto}
-.modal-footer{display:flex;justify-content:flex-end;gap:9px;
-  padding:16px 24px;border-top:1px solid var(--border)}
+# ════════════════════════════════════════════════════════
+# Google Sheets CSV 取得
+# ════════════════════════════════════════════════════════
 
-/* 編集リスト */
-.edit-list{list-style:none;margin-bottom:20px}
-.edit-item{display:flex;align-items:center;gap:10px;
-  padding:10px 12px;border-radius:9px;border:1px solid var(--border);
-  background:var(--bg3);margin-bottom:7px;cursor:default;
-  transition:border-color .15s}
-.edit-item:hover{border-color:rgba(56,189,248,.25)}
-.edit-item.sortable-ghost{opacity:.35}
-.edit-item.sortable-chosen{border-color:var(--accent);box-shadow:0 0 0 2px rgba(56,189,248,.15)}
-.drag-handle{color:var(--muted);cursor:grab;font-size:16px;line-height:1;
-  user-select:none;padding:0 4px}
-.drag-handle:active{cursor:grabbing}
-.item-code{font-family:'Space Mono',monospace;font-size:10px;color:var(--accent);
-  background:rgba(56,189,248,.1);padding:2px 7px;border-radius:4px;white-space:nowrap}
-.item-name{flex:1;font-size:12px;color:var(--text)}
-.item-name small{font-size:10px;color:var(--muted);margin-left:4px}
-.item-sector{font-size:10px;color:var(--muted);white-space:nowrap;
-  background:rgba(255,255,255,.04);padding:2px 7px;border-radius:4px}
-.btn-del{background:transparent;border:none;color:var(--muted);cursor:pointer;
-  font-size:16px;padding:2px 6px;border-radius:5px;transition:all .15s;line-height:1}
-.btn-del:hover{background:rgba(248,113,113,.15);color:var(--dn)}
+def fetch_from_sheets(portfolio: list) -> list:
+    """
+    Google Sheets の CSV エクスポート URL からデータを取得。
+    URL形式:
+      https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq
+      ?tqx=out:csv&sheet={SHEET_NAME}
+    """
+    if not SHEET_ID:
+        return [{**s, "ok": False, "error": "SHEET_ID未設定"} for s in portfolio]
 
-/* 追加フォーム */
-.add-section{border-top:1px solid var(--border);padding-top:18px;margin-top:4px}
-.add-title{font-size:12px;font-weight:500;color:var(--text);margin-bottom:12px}
-.add-row{display:grid;grid-template-columns:120px 1fr;gap:8px;margin-bottom:8px;align-items:start}
-.add-row-3{display:grid;grid-template-columns:1fr 1fr 120px;gap:8px;margin-bottom:8px;align-items:end}
-.field-label{font-size:10px;color:var(--muted);margin-bottom:4px;display:block}
-input.field,select.field{width:100%;height:36px;background:rgba(255,255,255,.05);
-  border:1px solid var(--border);border-radius:8px;color:var(--text);
-  padding:0 12px;font-size:12px;font-family:'Noto Sans JP',sans-serif;
-  outline:none;transition:border-color .2s}
-input.field:focus,select.field:focus{border-color:var(--accent)}
-input.field::placeholder{color:var(--muted)}
-select.field option{background:var(--bg2)}
+    url = (f"https://docs.google.com/spreadsheets/d/{SHEET_ID}"
+           f"/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}")
 
-/* 検索結果バッジ */
-#search-result{display:none;margin-top:8px;font-size:11px;padding:8px 12px;
-  border-radius:7px;line-height:1.6}
-#search-result.ok {background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.2);color:#6ee7b7}
-#search-result.err{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);color:var(--dn-txt)}
+    ts = datetime.now().strftime("%H:%M:%S")
+    print(f"\n[{ts}] Google Sheets からデータ取得中...")
+    print(f"  URL: .../{SHEET_ID[:12]}...?sheet={SHEET_NAME}")
 
-/* JSON export/import */
-.json-section{border-top:1px solid var(--border);padding-top:16px;margin-top:4px}
-.json-title{font-size:12px;font-weight:500;color:var(--text);margin-bottom:10px}
-.json-btns{display:flex;gap:8px;flex-wrap:wrap}
-.btn-sm{display:flex;align-items:center;gap:5px;padding:7px 14px;border-radius:7px;
-  cursor:pointer;font-size:11px;font-family:'Noto Sans JP',sans-serif;transition:all .18s;border:1px solid}
-.btn-export{background:rgba(56,189,248,.08);border-color:rgba(56,189,248,.25);color:var(--accent)}
-.btn-export:hover{background:rgba(56,189,248,.15)}
-.btn-import{background:rgba(129,140,248,.08);border-color:rgba(129,140,248,.25);color:#a5b4fc}
-.btn-import:hover{background:rgba(129,140,248,.15)}
-#import-file{display:none}
+    try:
+        r = SESSION.get(url, timeout=20)
+        r.raise_for_status()
+        text = r.text
+    except Exception as e:
+        print(f"  ERROR: {e}")
+        return [{**s, "ok": False, "error": str(e)} for s in portfolio]
 
-/* save status */
-#save-status{font-size:11px;margin-top:8px;display:none;padding:6px 10px;
-  border-radius:6px;text-align:center}
-#save-status.ok {background:rgba(52,211,153,.1);color:#6ee7b7}
-#save-status.err{background:rgba(248,113,113,.1);color:var(--dn-txt)}
+    # CSV パース
+    # 期待するフォーマット: code, price, prev, change, pct
+    sheet_data = {}
+    try:
+        reader = csv.DictReader(io.StringIO(text))
+        for row in reader:
+            code = str(row.get("code", "")).strip().strip('"').zfill(4)
+            if not code or not code.isdigit():
+                continue
+            try:
+                price  = float(str(row.get("price","0")).strip().strip('"').replace(",","") or 0)
+                prev   = float(str(row.get("prev","0")).strip().strip('"').replace(",","") or 0)
+                change = float(str(row.get("change","0")).strip().strip('"').replace(",","") or 0)
+                pct    = float(str(row.get("pct","0")).strip().strip('"').replace(",","") or 0)
+                sheet_data[code] = {
+                    "price":  round(price),
+                    "prev":   round(prev),
+                    "change": round(change),
+                    "pct":    round(pct, 2),
+                }
+            except Exception as e:
+                print(f"  parse error code={code}: {e}")
+    except Exception as e:
+        print(f"  CSV parse error: {e}")
+        return [{**s, "ok": False, "error": f"CSV parse: {e}"} for s in portfolio]
 
-/* report modal */
-.overlay-rpt{position:fixed;inset:0;background:rgba(0,0,0,.82);display:none;
-  align-items:flex-start;justify-content:center;z-index:950;backdrop-filter:blur(4px);
-  overflow-y:auto;padding:40px 20px}
-.overlay-rpt.open{display:flex}
-.rpt{background:var(--bg2);border:1px solid var(--border);border-radius:14px;
-  padding:28px;max-width:900px;width:100%;position:relative}
-.rpt h2{font-size:17px;margin-bottom:4px}
-.rpt-sub{font-size:11px;color:var(--muted);margin-bottom:18px}
-.rpt-x{position:absolute;top:14px;right:16px;background:transparent;border:none;
-  color:var(--muted);cursor:pointer;font-size:20px}
-.rpt-x:hover{color:var(--text)}
-.rpt-tbl{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px}
-.rpt-tbl th{background:var(--bg3);padding:8px 10px;text-align:left;
-  color:var(--muted);font-weight:500;border-bottom:1px solid var(--border)}
-.rpt-tbl td{padding:8px 10px;border-bottom:1px solid var(--border);
-  vertical-align:middle;font-family:'Space Mono',monospace;font-size:11px}
-.rpt-tbl td.nm{font-family:'Noto Sans JP',sans-serif;font-size:12px}
-.rpt-ttl{font-size:13px;font-weight:500;margin:16px 0 8px;
-  border-left:3px solid var(--accent);padding-left:8px}
-.bdg{font-size:9px;padding:1px 6px;border-radius:3px;
-  background:rgba(129,140,248,.15);color:#a5b4fc}
+    # ポートフォリオと結合
+    today = datetime.now().strftime("%Y-%m-%d")
+    results = []
+    for stock in portfolio:
+        code = stock["code"]
+        d    = sheet_data.get(code)
+        if d and d["price"] > 0:
+            results.append({
+                **stock,
+                **d,
+                "volume": 0,
+                "date":   today,
+                "ok":     True,
+            })
+            sign = "+" if d["change"] >= 0 else ""
+            print(f"  ✓ {code} {stock['ja']:<14} "
+                  f"¥{d['price']:>8,}  ({sign}{d['pct']:.2f}%)")
+        else:
+            err = "Sheetsにデータなし" if d else "コードが見つかりません"
+            print(f"  ✗ {code} {stock['ja']:<14} {err}")
+            results.append({**stock, "price":0,"prev":0,"change":0,
+                             "pct":0,"volume":0,"date":"","ok":False,"error":err})
 
-@media(max-width:768px){.summary{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr 1fr}}
-@media(max-width:480px){.grid{grid-template-columns:1fr}.summary{grid-template-columns:1fr 1fr}
-  .add-row{grid-template-columns:1fr}.add-row-3{grid-template-columns:1fr 1fr}}
-</style>
-</head>
-<body>
-<div class="page">
-  <div class="hdr">
-    <div class="hdr-l">
-      <div class="hdr-icon">JP</div>
-      <div>
-        <div class="hdr-title">PORTFOLIO MONITOR</div>
-        <div class="hdr-sub" id="hdr-sub">Yahoo Finance · Render クラウド</div>
-      </div>
-    </div>
-    <div class="hdr-r">
-      <div id="lupd" style="font-size:10px;color:var(--muted);font-family:'Space Mono',monospace">取得中...</div>
-      <div class="live"><div class="dot"></div>LIVE</div>
-    </div>
-  </div>
+    ok_n = sum(1 for r in results if r["ok"])
+    print(f"  → Done: {ok_n}/{len(results)}\n")
+    return results
 
-  <div id="sleep-bar">⏳ サーバー起動中です（初回は30〜60秒かかる場合があります）...</div>
-  <div id="err-bar"></div>
-  <div id="group-bar" style="display:none;background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.2);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:11px;color:#7dd3fc;line-height:1.6"></div>
 
-  <div class="summary">
-    <div class="sc"><div class="sc-l">取得 / 合計</div><div class="sc-v" id="s-cnt">— / —</div><div class="sc-s">Alpha Vantage</div></div>
-    <div class="sc"><div class="sc-l">上昇 / 下落</div><div class="sc-v" id="s-ud" style="font-size:15px">— / —</div><div class="sc-s" id="s-date">直近終値</div></div>
-    <div class="sc"><div class="sc-l">平均変動率</div><div class="sc-v" id="s-avg">—</div><div class="sc-s">全取得銘柄</div></div>
-    <div class="sc"><div class="sc-l">最高上昇</div><div class="sc-v" id="s-top" style="font-size:13px">—</div><div class="sc-s" id="s-topn">—</div></div>
-  </div>
+# ════════════════════════════════════════════════════════
+# GitHub API
+# ════════════════════════════════════════════════════════
 
-  <div class="tabs">
-    <button class="tab active" onclick="fSec('all',this)">すべて</button>
-    <button class="tab" onclick="fSec('テクノロジー',this)">テクノロジー</button>
-    <button class="tab" onclick="fSec('商社',this)">商社</button>
-    <button class="tab" onclick="fSec('銀行',this)">銀行</button>
-    <button class="tab" onclick="fSec('エンタメ',this)">エンタメ</button>
-    <button class="tab" onclick="fSec('通信・投資',this)">通信・投資</button>
-  </div>
+def gh_headers():
+    return {"Authorization": f"token {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github.v3+json"}
 
-  <div class="grid" id="grid"></div>
+def github_get_file(filepath):
+    url = (f"https://api.github.com/repos/{GITHUB_REPO}"
+           f"/contents/{filepath}")
+    r = requests.get(url, headers=gh_headers(),
+                     params={"ref": GITHUB_BRANCH}, timeout=10)
+    if r.status_code == 404:
+        return None, None
+    r.raise_for_status()
+    d = r.json()
+    return base64.b64decode(d["content"]).decode("utf-8"), d["sha"]
 
-  <div class="footer">
-    <div class="footer-note">
-      データ: Alpha Vantage · Render 無料ホスティング<br>
-      ※ 1回の更新で5銘柄を取得。3回更新で全銘柄カバー(日25콜制限対策)
-    </div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <button class="btn btn-edit" onclick="openEdit()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-        </svg>銘柄編集
-      </button>
-      <button class="btn btn-rpt" id="btn-rpt" disabled>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-          <polyline points="14 2 14 8 20 8"/>
-        </svg>分析レポート
-      </button>
-      <button class="btn btn-primary" id="btn-ref" onclick="loadQuotes()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="23 4 23 10 17 10"/>
-          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-        </svg>株価を更新
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- ═══ EDIT MODAL ═══ -->
-<div class="overlay" id="edit-overlay">
-  <div class="modal">
-    <div class="modal-hdr">
-      <div class="modal-title">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:6px">
-          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-        </svg>ポートフォリオ編集
-      </div>
-      <button class="modal-x" onclick="closeEdit()">×</button>
-    </div>
-    <div class="modal-body">
-
-      <!-- 銘柄リスト -->
-      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
-        ≡ をドラッグして順序を変更できます
-      </div>
-      <ul class="edit-list" id="edit-list"></ul>
-
-      <!-- 銘柄追加 -->
-      <div class="add-section">
-        <div class="add-title">銘柄を追加</div>
-
-        <div class="add-row">
-          <div>
-            <span class="field-label">証券コード（4桁）</span>
-            <div style="display:flex;gap:6px">
-              <input class="field" id="add-code" placeholder="例: 9433" maxlength="4"
-                style="flex:1" onkeydown="if(event.key==='Enter')checkCode()">
-              <button class="btn-sm btn-export" onclick="checkCode()" style="white-space:nowrap;height:36px">確認</button>
-            </div>
-          </div>
-          <div>
-            <span class="field-label">セクター</span>
-            <select class="field" id="add-sector">
-              <option>テクノロジー</option>
-              <option>商社</option>
-              <option>銀行</option>
-              <option>エンタメ</option>
-              <option>通信・投資</option>
-              <option>その他</option>
-            </select>
-          </div>
-        </div>
-
-        <div id="search-result"></div>
-
-        <div class="add-row-3" id="add-names-row" style="display:none">
-          <div>
-            <span class="field-label">銘柄名（日本語）</span>
-            <input class="field" id="add-ja" placeholder="例: KDDI">
-          </div>
-          <div>
-            <span class="field-label">銘柄名（英語）</span>
-            <input class="field" id="add-en" placeholder="例: KDDI Corp">
-          </div>
-          <button class="btn-sm btn-export" onclick="addStock()"
-            style="height:36px;margin-top:auto">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            追加
-          </button>
-        </div>
-      </div>
-
-      <!-- JSON export/import -->
-      <div class="json-section">
-        <div class="json-title">設定の保存・読み込み</div>
-        <div class="json-btns">
-          <button class="btn-sm btn-export" onclick="exportJSON()">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            JSONエクスポート
-          </button>
-          <button class="btn-sm btn-import" onclick="document.getElementById('import-file').click()">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            JSONインポート
-          </button>
-          <input type="file" id="import-file" accept=".json" onchange="importJSON(event)">
-        </div>
-      </div>
-
-      <div id="save-status"></div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-sm" onclick="closeEdit()"
-        style="background:transparent;border:1px solid var(--border);color:var(--muted)">キャンセル</button>
-      <button class="btn-sm btn-export" id="btn-save" onclick="savePortfolio()">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-        サーバーに保存
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- ═══ REPORT MODAL ═══ -->
-<div class="overlay-rpt" id="rpt-overlay">
-  <div class="rpt">
-    <button class="rpt-x" onclick="document.getElementById('rpt-overlay').classList.remove('open')">×</button>
-    <h2>📊 ポートフォリオ分析レポート</h2>
-    <div class="rpt-sub" id="rpt-date">—</div>
-    <div id="rpt-body"></div>
-  </div>
-</div>
-
-<script>
-// ════════════════════════════════════════════
-// 状態管理
-// ════════════════════════════════════════════
-let portfolio = [];   // 現在の銘柄リスト（編集中はeditPortfolioで管理）
-let editPortfolio = [];  // 編集モーダル内の作業コピー
-let quoteData = [];   // 最新株価データ
-
-// ════════════════════════════════════════════
-// 初期化
-// ════════════════════════════════════════════
-async function init() {
-  await loadPortfolio();
-  shimmer();
-  loadQuotes();
-}
-
-// ════════════════════════════════════════════
-// ポートフォリオ読み込み (GET /api/portfolio)
-// ════════════════════════════════════════════
-async function loadPortfolio() {
-  try {
-    const r = await fetch('/api/portfolio');
-    portfolio = await r.json();
-  } catch(e) {
-    console.error('loadPortfolio:', e);
-  }
-}
-
-// ════════════════════════════════════════════
-// 株価取得 (POST /api/quotes)
-// ════════════════════════════════════════════
-let updateCount = 0;
-async function loadQuotes() {
-  if (!portfolio.length) return;
-  const btn = document.getElementById('btn-ref');
-  btn.disabled = true; btn.classList.add('spin');
-  document.getElementById('err-bar').style.display = 'none';
-  document.getElementById('group-bar').style.display = 'none';
-
-  // 取得開始前にグループ情報を表示
-  const n = portfolio.length;
-  const size = Math.ceil(n / 3);
-  const gi = updateCount % 3;
-  const gStart = gi * size + 1;
-  const gEnd = Math.min(gStart + size - 1, n);
-  const gBar = document.getElementById('group-bar');
-  gBar.style.display = 'block';
-  gBar.innerHTML = `⏳ グループ ${gi+1}/3 を取得中 (${gStart}〜${gEnd}番目, 約60秒)... ` +
-    `<span style="color:#94a3b8;font-size:10px">Alpha Vantage 日25콜制限のため5銘柄ずつ取得。3回更新で全${n}銘柄をカバー。</span>`;
-
-  const sleepTimer = setTimeout(() => {
-    document.getElementById('sleep-bar').style.display = 'block';
-  }, 3000);
-
-  shimmer();
-  try {
-    const r = await fetch('/api/quotes', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(portfolio),
-    });
-    clearTimeout(sleepTimer);
-    document.getElementById('sleep-bar').style.display = 'none';
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    quoteData = await r.json();
-    updateCount++;
-    renderCards(quoteData);
-    updateSummary(quoteData);
-    const now = new Date().toLocaleTimeString('ja-JP');
-    const ok = quoteData.filter(s=>s.ok).length;
-    document.getElementById('lupd').textContent = '更新: ' + now;
-    document.getElementById('hdr-sub').textContent =
-      `Alpha Vantage · Render クラウド · ${now}`;
-    document.getElementById('btn-rpt').disabled = false;
-
-    // 取得済み件数を表示
-    const nextGi = updateCount % 3;
-    const nextStart = nextGi * size + 1;
-    const nextEnd = Math.min(nextStart + size - 1, n);
-    gBar.innerHTML = `✓ グループ ${gi+1}/3 取得完了 — ${ok}/${n}銘柄キャッシュ済 · ${now} ` +
-      (ok < n ? `<br><span style="color:#94a3b8;font-size:10px">「株価を更新」をもう一度押すとグループ${nextGi+1} (${nextStart}〜${nextEnd}番目) を取得します。3回押すと全銘柄揃います。</span>` : '');
-  } catch(e) {
-    clearTimeout(sleepTimer);
-    document.getElementById('sleep-bar').style.display = 'none';
-    document.getElementById('group-bar').style.display = 'none';
-    const eb = document.getElementById('err-bar');
-    eb.style.display = 'block';
-    eb.textContent = `⚠️ 取得エラー: ${e.message}`;
-  }
-  btn.disabled = false; btn.classList.remove('spin');
-}
-
-// ════════════════════════════════════════════
-// カード描画
-// ════════════════════════════════════════════
-function shimmer() {
-  document.getElementById('grid').innerHTML = portfolio.map(s => `
-    <div class="card flat loading" id="card-${s.code}" data-sec="${s.sector}">
-      <div class="card-h"><span class="card-code">${s.code}</span><span class="card-sec">${s.sector}</span></div>
-      <div class="card-name">${s.ja}<br><small>${s.en}</small></div>
-      <div style="height:72px"></div>
-    </div>`).join('');
-}
-
-function renderCards(data) {
-  const g = document.getElementById('grid'); g.innerHTML = '';
-  data.forEach(s => {
-    const up = s.ok && s.pct > 0.05, dn = s.ok && s.pct < -0.05;
-    const d = document.createElement('div');
-    d.className = 'card ' + (up?'up':dn?'dn':'flat');
-    d.id = 'card-' + s.code; d.dataset.sec = s.sector;
-    if (!s.ok) {
-      d.innerHTML = `
-        <div class="card-h"><span class="card-code">${s.code}</span><span class="card-sec">${s.sector}</span></div>
-        <div class="card-name">${s.ja}<br><small>${s.en}</small></div>
-        <div style="font-size:11px;color:var(--muted);margin-top:12px">取得失敗</div>`;
-    } else {
-      const sp = s.pct>=0?'+':'', sc = s.change>=0?'+':'';
-      d.innerHTML = `
-        <div class="card-h"><span class="card-code">${s.code}</span><span class="card-sec">${s.sector}</span></div>
-        <div class="card-name">${s.ja}<br><small>${s.en}</small></div>
-        <div class="card-row">
-          <div class="card-price">¥${s.price.toLocaleString('ja-JP')}</div>
-          <div class="card-right">
-            <div class="card-pct ${up?'pct-up':dn?'pct-dn':'pct-fl'}">${sp}${s.pct.toFixed(2)}%</div>
-            <div class="card-yen">${sc}${s.change.toLocaleString()}円</div>
-          </div>
-        </div>
-        <div class="spark-wrap"><canvas class="spark" id="sp-${s.code}"></canvas></div>
-        <div class="card-meta">
-          <span>${s.volume?(s.volume/10000).toFixed(0)+'万株':'—'}</span>
-          <span>${s.date}</span>
-        </div>`;
+def github_put_file(filepath, content_str, sha=None, message="Update"):
+    url = (f"https://api.github.com/repos/{GITHUB_REPO}"
+           f"/contents/{filepath}")
+    payload = {
+        "message": message,
+        "content": base64.b64encode(
+            content_str.encode("utf-8")).decode("utf-8"),
+        "branch": GITHUB_BRANCH,
     }
-    g.appendChild(d);
-    if (s.ok) setTimeout(() => spark(s.code, s.pct), 60);
-  });
-}
+    if sha:
+        payload["sha"] = sha
+    r = requests.put(url, headers=gh_headers(), json=payload, timeout=10)
+    r.raise_for_status()
+    return r.json()
 
-function spark(code, pct) {
-  const cv = document.getElementById('sp-'+code); if (!cv) return;
-  const w = cv.width = cv.offsetWidth||200, h = cv.height = 32;
-  const ctx = cv.getContext('2d'); ctx.clearRect(0,0,w,h);
-  const n=20,v=[0];
-  for(let i=1;i<n;i++) v.push(pct/100*(i/n)+(Math.random()-.5)*0.0015);
-  v.push(pct/100);
-  const mn=Math.min(...v),mx=Math.max(...v),r=mx-mn||.001;
-  const tx=i=>(i/(v.length-1))*w, ty=q=>h-((q-mn)/r)*(h-5)-2;
-  const isU=pct>=0;
-  const g=ctx.createLinearGradient(0,0,0,h);
-  g.addColorStop(0,isU?'rgba(52,211,153,.18)':'rgba(248,113,113,.18)');
-  g.addColorStop(1,'rgba(0,0,0,0)');
-  ctx.beginPath();ctx.moveTo(tx(0),h);
-  v.forEach((q,i)=>ctx.lineTo(tx(i),ty(q)));
-  ctx.lineTo(tx(v.length-1),h);ctx.closePath();ctx.fillStyle=g;ctx.fill();
-  ctx.beginPath();
-  v.forEach((q,i)=>i===0?ctx.moveTo(tx(i),ty(q)):ctx.lineTo(tx(i),ty(q)));
-  ctx.strokeStyle=isU?'#34d399':'#f87171';ctx.lineWidth=1.5;ctx.stroke();
-}
 
-function updateSummary(data) {
-  const ok = data.filter(s=>s.ok);
-  document.getElementById('s-cnt').textContent = `${ok.length}/${data.length}`;
-  if (!ok.length) return;
-  const ups=ok.filter(s=>s.pct>0.05).length, dns=ok.filter(s=>s.pct<-0.05).length;
-  const avg=ok.reduce((a,s)=>a+s.pct,0)/ok.length;
-  const dates=ok.map(s=>s.date).filter(Boolean).sort();
-  const lat=dates.length?dates[dates.length-1]:'—';
-  let tp=-Infinity,tn='';
-  ok.forEach(s=>{if(s.pct>tp){tp=s.pct;tn=s.ja;}});
-  document.getElementById('s-ud').textContent=`${ups} / ${dns}`;
-  document.getElementById('s-date').textContent=lat;
-  const ae=document.getElementById('s-avg');
-  ae.textContent=(avg>=0?'+':'')+avg.toFixed(2)+'%';
-  ae.style.color=avg>=0?'var(--up)':'var(--dn)';
-  document.getElementById('s-top').textContent=(tp>=0?'+':'')+tp.toFixed(2)+'%';
-  document.getElementById('s-top').style.color='var(--up)';
-  document.getElementById('s-topn').textContent=tn;
-}
+# ════════════════════════════════════════════════════════
+# Routes
+# ════════════════════════════════════════════════════════
 
-function fSec(sec,btn){
-  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-  btn.classList.add('active');
-  document.querySelectorAll('.card').forEach(c=>{
-    c.style.display=(sec==='all'||c.dataset.sec===sec)?'':'none';
-  });
-}
+@app.route("/")
+def index():
+    return send_from_directory("static", "index.html")
 
-// ════════════════════════════════════════════
-// 編集モーダル
-// ════════════════════════════════════════════
-let sortable = null;
 
-function openEdit() {
-  editPortfolio = JSON.parse(JSON.stringify(portfolio));
-  renderEditList();
-  document.getElementById('search-result').style.display='none';
-  document.getElementById('add-names-row').style.display='none';
-  document.getElementById('add-code').value='';
-  document.getElementById('add-ja').value='';
-  document.getElementById('add-en').value='';
-  document.getElementById('save-status').style.display='none';
-  document.getElementById('edit-overlay').classList.add('open');
-}
+@app.route("/api/quotes", methods=["POST"])
+def quotes():
+    portfolio = request.json
+    if not isinstance(portfolio, list) or not portfolio:
+        return jsonify({"error": "銘柄リストが空です"}), 400
+    if not SHEET_ID:
+        return jsonify({"error":
+            "SHEET_ID が設定されていません。"
+            "Render の Environment タブで SHEET_ID を設定してください。"}), 500
+    results = fetch_from_sheets(portfolio)
+    return jsonify(results)
 
-function closeEdit() {
-  document.getElementById('edit-overlay').classList.remove('open');
-}
 
-function renderEditList() {
-  const ul = document.getElementById('edit-list');
-  ul.innerHTML = editPortfolio.map((s,i) => `
-    <li class="edit-item" data-i="${i}">
-      <span class="drag-handle">≡</span>
-      <span class="item-code">${s.code}</span>
-      <span class="item-name">${s.ja}<small>${s.en}</small></span>
-      <span class="item-sector">${s.sector}</span>
-      <button class="btn-del" onclick="deleteStock(${i})" title="削除">✕</button>
-    </li>`).join('');
+@app.route("/api/portfolio", methods=["GET"])
+def get_portfolio():
+    if not GITHUB_TOKEN or not GITHUB_REPO:
+        return jsonify(DEFAULT_PORTFOLIO)
+    try:
+        content, _ = github_get_file(PORTFOLIO_FILE)
+        if content is None:
+            return jsonify(DEFAULT_PORTFOLIO)
+        return jsonify(json.loads(content))
+    except Exception as e:
+        print(f"GitHub get error: {e}")
+        return jsonify(DEFAULT_PORTFOLIO)
 
-  // Sortable.js でドラッグ&ドロップ
-  if (sortable) sortable.destroy();
-  sortable = Sortable.create(ul, {
-    handle: '.drag-handle',
-    animation: 150,
-    ghostClass: 'sortable-ghost',
-    chosenClass: 'sortable-chosen',
-    onEnd(evt) {
-      const moved = editPortfolio.splice(evt.oldIndex, 1)[0];
-      editPortfolio.splice(evt.newIndex, 0, moved);
-    }
-  });
-}
 
-function deleteStock(i) {
-  editPortfolio.splice(i, 1);
-  renderEditList();
-}
+@app.route("/api/portfolio", methods=["POST"])
+def save_portfolio():
+    if not GITHUB_TOKEN or not GITHUB_REPO:
+        return jsonify({"error": "GITHUB_TOKEN/GITHUB_REPO未設定"}), 500
+    portfolio = request.json
+    if not isinstance(portfolio, list):
+        return jsonify({"error": "無効なデータ形式"}), 400
+    try:
+        _, sha = github_get_file(PORTFOLIO_FILE)
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        github_put_file(
+            PORTFOLIO_FILE,
+            json.dumps(portfolio, ensure_ascii=False, indent=2),
+            sha=sha,
+            message=f"Update portfolio ({len(portfolio)} stocks) {ts}",
+        )
+        return jsonify({"ok": True, "count": len(portfolio)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-// ── 銘柄コード確認 ──────────────────────────────
-async function checkCode() {
-  const code = document.getElementById('add-code').value.trim();
-  const sr   = document.getElementById('search-result');
-  const nr   = document.getElementById('add-names-row');
-  sr.style.display = 'block';
-  sr.className = 'ok';
-  sr.textContent = '確認中...';
 
-  try {
-    const r = await fetch(`/api/search?code=${encodeURIComponent(code)}`);
-    const d = await r.json();
-    if (!d.found) {
-      sr.className = 'err';
-      sr.textContent = `❌ ${d.error || '銘柄が見つかりません'}`;
-      nr.style.display = 'none';
-      return;
-    }
-    sr.className = 'ok';
-    sr.textContent = `✓ ${d.code} — ${d.name_en}  現在値: ¥${d.price?.toLocaleString() || '—'}`;
-    document.getElementById('add-en').value = d.name_en || '';
-    document.getElementById('add-ja').value = d.name_en || '';  // 仮表示、ユーザーが修正
-    nr.style.display = 'grid';
-  } catch(e) {
-    sr.className = 'err';
-    sr.textContent = `❌ エラー: ${e.message}`;
-    nr.style.display = 'none';
-  }
-}
+@app.route("/api/search")
+def search():
+    """銘柄コード確認 — Sheetsに追加する前の確認用"""
+    code = request.args.get("code", "").strip().zfill(4)
+    if not code.isdigit() or len(code) != 4:
+        return jsonify({"found": False, "error": "4桁の数字で入力してください"}), 400
+    # Sheets方式では銘柄確認はコードのみ返す
+    return jsonify({
+        "found":   True,
+        "code":    code,
+        "name_en": f"TYO:{code}",
+        "price":   None,
+        "note":    f"Google Sheets に =GOOGLEFINANCE(\"TYO:{code}\",\"price\") を追加してください",
+    })
 
-// ── 銘柄追加 ──────────────────────────────────
-function addStock() {
-  const code   = document.getElementById('add-code').value.trim().padStart(4,'0');
-  const ja     = document.getElementById('add-ja').value.trim();
-  const en     = document.getElementById('add-en').value.trim();
-  const sector = document.getElementById('add-sector').value;
 
-  if (!code || !ja || !en) {
-    alert('コード・銘柄名（日本語・英語）を入力してください');
-    return;
-  }
-  if (editPortfolio.find(s=>s.code===code)) {
-    alert('この銘柄は既に追加されています');
-    return;
-  }
+@app.route("/health")
+def health():
+    import sys
+    return jsonify({
+        "status":       "ok",
+        "time":         datetime.now().isoformat(),
+        "python":       sys.version,
+        "sheet_ready":  bool(SHEET_ID),
+        "sheet_id":     SHEET_ID[:12] + "..." if SHEET_ID else "未設定",
+        "github_ready": bool(GITHUB_TOKEN and GITHUB_REPO),
+    })
 
-  editPortfolio.push({ code, ja, en, sector });
-  renderEditList();
 
-  // フォームリセット
-  document.getElementById('add-code').value='';
-  document.getElementById('add-ja').value='';
-  document.getElementById('add-en').value='';
-  document.getElementById('add-names-row').style.display='none';
-  document.getElementById('search-result').style.display='none';
-}
-
-// ── サーバーに保存 ──────────────────────────────
-async function savePortfolio() {
-  const btn = document.getElementById('btn-save');
-  const ss  = document.getElementById('save-status');
-  btn.disabled = true;
-  btn.textContent = '保存中...';
-  ss.style.display = 'block';
-  ss.className = 'ok';
-  ss.textContent = '⏳ GitHubに保存中...';
-
-  try {
-    const r = await fetch('/api/portfolio', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(editPortfolio),
-    });
-    const d = await r.json();
-    if (!r.ok || d.error) throw new Error(d.error || `HTTP ${r.status}`);
-
-    portfolio = JSON.parse(JSON.stringify(editPortfolio));
-    ss.className = 'ok';
-    ss.textContent = `✓ ${portfolio.length}銘柄をGitHubに保存しました`;
-
-    setTimeout(() => {
-      closeEdit();
-      shimmer();
-      loadQuotes();
-    }, 1200);
-  } catch(e) {
-    ss.className = 'err';
-    ss.textContent = `❌ 保存失敗: ${e.message}`;
-  }
-  btn.disabled = false;
-  btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-    <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-    サーバーに保存`;
-}
-
-// ════════════════════════════════════════════
-// JSON エクスポート / インポート
-// ════════════════════════════════════════════
-function exportJSON() {
-  const data = JSON.stringify(editPortfolio, null, 2);
-  const blob = new Blob([data], {type:'application/json'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `portfolio_${new Date().toISOString().slice(0,10)}.json`;
-  a.click();
-}
-
-function importJSON(e) {
-  const file = e.target.files[0]; if (!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    try {
-      const data = JSON.parse(ev.target.result);
-      if (!Array.isArray(data)) throw new Error('配列形式が必要です');
-      // バリデーション
-      data.forEach((s,i) => {
-        if (!s.code||!s.ja||!s.en||!s.sector)
-          throw new Error(`${i+1}番目の銘柄にcode/ja/en/sectorが必要です`);
-      });
-      editPortfolio = data;
-      renderEditList();
-      const ss = document.getElementById('save-status');
-      ss.style.display='block'; ss.className='ok';
-      ss.textContent=`✓ ${data.length}銘柄をインポートしました（「サーバーに保存」で確定）`;
-    } catch(err) {
-      alert('インポート失敗: ' + err.message);
-    }
-  };
-  reader.readAsText(file);
-  e.target.value = '';
-}
-
-// ════════════════════════════════════════════
-// 分析レポート
-// ════════════════════════════════════════════
-document.getElementById('btn-rpt').addEventListener('click', () => {
-  const ok = quoteData.filter(s=>s.ok).sort((a,b)=>b.pct-a.pct);
-  if (!ok.length) return;
-  const ups=ok.filter(s=>s.pct>0).length, dns=ok.filter(s=>s.pct<0).length;
-  const avg=ok.reduce((a,s)=>a+s.pct,0)/(ok.length||1);
-  const sm={};ok.forEach(s=>{if(!sm[s.sector])sm[s.sector]=[];sm[s.sector].push(s.pct);});
-  const sa=Object.entries(sm).map(([n,v])=>({n,a:v.reduce((a,x)=>a+x,0)/v.length})).sort((a,b)=>b.a-a.a);
-  const ps=p=>`color:${p>=0?'#34d399':'#f87171'};font-weight:700`;
-  const rows=ok.map(s=>`<tr>
-    <td style="color:#38bdf8">${s.code}</td>
-    <td class="nm">${s.ja}<br><small style="color:#64748b">${s.en}</small></td>
-    <td><span class="bdg">${s.sector}</span></td>
-    <td>¥${s.price.toLocaleString()}</td>
-    <td style="${ps(s.pct)}">${s.pct>=0?'+':''}${s.pct.toFixed(2)}%</td>
-    <td style="${ps(s.change)}">${s.change>=0?'+':''}${s.change.toLocaleString()}円</td>
-    <td style="font-size:10px;color:#64748b">${s.date}</td>
-  </tr>`).join('');
-  const sr=sa.map(s=>`<tr>
-    <td class="nm">${s.n}</td>
-    <td style="${ps(s.a)}">${s.a>=0?'+':''}${s.a.toFixed(2)}%</td>
-    <td>${s.a>=.5?'✅ 好調':s.a>=0?'🟡 横ばい':s.a>=-.5?'🟡 軟調':'⚠️ 要注意'}</td>
-  </tr>`).join('');
-  const now=new Date().toLocaleString('ja-JP');
-  document.getElementById('rpt-date').textContent=`生成: ${now} · Yahoo Finance`;
-  document.getElementById('rpt-body').innerHTML=`
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">
-      ${[['取得',ok.length,''],['上昇',ups,'color:#34d399'],['下落',dns,'color:#f87171'],
-         ['平均',(avg>=0?'+':'')+avg.toFixed(2)+'%',`color:${avg>=0?'#34d399':'#f87171'}`]]
-        .map(([l,v,st])=>`<div style="background:rgba(255,255,255,.04);border-radius:8px;padding:12px">
-          <div style="font-size:10px;color:#64748b;text-transform:uppercase;margin-bottom:4px">${l}</div>
-          <div style="font-size:20px;font-weight:700;font-family:'Space Mono',monospace;${st}">${v}</div>
-        </div>`).join('')}
-    </div>
-    <div class="rpt-ttl">全銘柄パフォーマンス</div>
-    <table class="rpt-tbl"><thead><tr>
-      <th>コード</th><th>銘柄名</th><th>セクター</th><th>終値</th><th>変動率</th><th>前日比</th><th>日付</th>
-    </tr></thead><tbody>${rows}</tbody></table>
-    <div class="rpt-ttl">セクター別パフォーマンス</div>
-    <table class="rpt-tbl"><thead><tr>
-      <th>セクター</th><th>平均変動率</th><th>状況</th>
-    </tr></thead><tbody>${sr}</tbody></table>
-    <div style="font-size:10px;color:#64748b;margin-top:14px;text-align:center">
-      Yahoo Finance · 投資判断は自己責任でお願いします。
-    </div>`;
-  document.getElementById('rpt-overlay').classList.add('open');
-});
-
-document.getElementById('rpt-overlay').addEventListener('click', e=>{
-  if(e.target===e.currentTarget) e.currentTarget.classList.remove('open');
-});
-document.getElementById('edit-overlay').addEventListener('click', e=>{
-  if(e.target===e.currentTarget) closeEdit();
-});
-
-init();
-</script>
-</body>
-</html>
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
