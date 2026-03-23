@@ -1,30 +1,26 @@
 """
-JP Portfolio Monitor — Google Sheets 版
-=========================================
-Google Sheets の GOOGLEFINANCE() 関数経由で TSE 株価を取得。
-完全無料・クラウド安定動作。
+JP Portfolio Monitor — Stooq 版
+===================================
+Stooq の CSV エンドポイントで日本株を取得。
+完全無料・公式 API 不要・クラウド動作確認済。
 
-仕組み:
-  Sheets に GOOGLEFINANCE("TYO:7741","price") 等を設定
-  → Sheets を CSV エクスポート URL で公開
-  → Render サーバーが CSV を読んでダッシュボードへ返す
+URL 形式:
+  https://stooq.com/q/d/l/?s=7741.jp&i=d
+  → Date,Open,High,Low,Close,Volume の CSV が返る
+  → 最新行が直近の取引日データ
 
-環境変数 (Render ダッシュボードで設定):
-  SHEET_ID     : Google Sheets の ID ← 必須
-  SHEET_NAME   : シート名 (デフォルト: Sheet1)
-  GITHUB_TOKEN : GitHub Personal Access Token
-  GITHUB_REPO  : "ユーザー名/リポジトリ名"
-  GITHUB_BRANCH: ブランチ名 (デフォルト: main)
+環境変数 (Render ダッシュボード):
+  GITHUB_TOKEN  : GitHub Personal Access Token
+  GITHUB_REPO   : "ユーザー名/リポジトリ名"
+  GITHUB_BRANCH : ブランチ名 (デフォルト: main)
 """
 
-import os, json, base64, csv, io, requests
+import os, json, base64, csv, io, time, requests
 from flask import Flask, jsonify, request, send_from_directory
 from datetime import datetime
 
 app = Flask(__name__, static_folder="static")
 
-SHEET_ID     = os.environ.get("SHEET_ID", "")
-SHEET_NAME   = os.environ.get("SHEET_NAME", "Sheet1")
 GITHUB_TOKEN  = os.environ.get("GITHUB_TOKEN", "")
 GITHUB_REPO   = os.environ.get("GITHUB_REPO", "")
 GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
@@ -48,87 +44,99 @@ DEFAULT_PORTFOLIO = [
     {"code":"8316","ja":"三井住友FG",          "en":"SMFG",           "sector":"銀行"},
 ]
 
+# ブラウザに見せかけるヘッダー
 SESSION = requests.Session()
-SESSION.headers.update({"User-Agent": "jp-portfolio/1.0"})
+SESSION.headers.update({
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept":          "text/html,application/xhtml+xml,*/*",
+    "Accept-Language": "ja-JP,ja;q=0.9,en;q=0.8",
+    "Referer":         "https://stooq.com/",
+})
 
 
 # ════════════════════════════════════════════════════════
-# Google Sheets CSV 取得
+# Stooq CSV 取得
 # ════════════════════════════════════════════════════════
 
-def fetch_from_sheets(portfolio: list) -> list:
+def fetch_one_stooq(code: str) -> dict:
     """
-    Google Sheets の CSV エクスポート URL からデータを取得。
-    URL形式:
-      https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq
-      ?tqx=out:csv&sheet={SHEET_NAME}
+    Stooq から1銘柄の最新 OHLCV を取得。
+    d1/d2 で直近10日を指定 → 最新行が最も直近の取引日データ。
+    日付指定なしだと全履歴 (2005年〜) が返るため必ず指定すること。
+    CSV ヘッダー: Date,Open,High,Low,Close,Volume
     """
-    if not SHEET_ID:
-        return [{**s, "ok": False, "error": "SHEET_ID未設定"} for s in portfolio]
-
-    url = (f"https://docs.google.com/spreadsheets/d/{SHEET_ID}"
-           f"/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}")
-
-    ts = datetime.now().strftime("%H:%M:%S")
-    print(f"\n[{ts}] Google Sheets からデータ取得中...")
-    print(f"  URL: .../{SHEET_ID[:12]}...?sheet={SHEET_NAME}")
-
+    from datetime import timedelta
+    today = datetime.now()
+    d2 = today.strftime("%Y%m%d")
+    d1 = (today - timedelta(days=10)).strftime("%Y%m%d")
+    url = f"https://stooq.com/q/d/l/?s={code}.jp&i=d&d1={d1}&d2={d2}"
     try:
-        r = SESSION.get(url, timeout=20)
+        r = SESSION.get(url, timeout=15)
         r.raise_for_status()
-        text = r.text
+        text = r.text.strip()
+    except requests.exceptions.Timeout:
+        return {"ok": False, "error": "timeout"}
     except Exception as e:
-        print(f"  ERROR: {e}")
-        return [{**s, "ok": False, "error": str(e)} for s in portfolio]
+        return {"ok": False, "error": str(e)}
 
-    # CSV パース
-    # 期待するフォーマット: code, price, prev, change, pct
-    sheet_data = {}
+    # Stooq がエラー時に "No data" などのテキストを返すことがある
+    if not text or "No data" in text or len(text) < 30:
+        return {"ok": False, "error": f"no data: {text[:50]}"}
+
     try:
-        reader = csv.DictReader(io.StringIO(text))
-        for row in reader:
-            code = str(row.get("code", "")).strip().strip('"').zfill(4)
-            if not code or not code.isdigit():
-                continue
-            try:
-                price  = float(str(row.get("price","0")).strip().strip('"').replace(",","") or 0)
-                prev   = float(str(row.get("prev","0")).strip().strip('"').replace(",","") or 0)
-                change = float(str(row.get("change","0")).strip().strip('"').replace(",","") or 0)
-                pct    = float(str(row.get("pct","0")).strip().strip('"').replace(",","") or 0)
-                sheet_data[code] = {
-                    "price":  round(price),
-                    "prev":   round(prev),
-                    "change": round(change),
-                    "pct":    round(pct, 2),
-                }
-            except Exception as e:
-                print(f"  parse error code={code}: {e}")
-    except Exception as e:
-        print(f"  CSV parse error: {e}")
-        return [{**s, "ok": False, "error": f"CSV parse: {e}"} for s in portfolio]
+        reader  = csv.DictReader(io.StringIO(text))
+        rows    = list(reader)
+        if not rows:
+            return {"ok": False, "error": "empty CSV"}
 
-    # ポートフォリオと結合
-    today = datetime.now().strftime("%Y-%m-%d")
+        # 最新行 (最後の行)
+        latest  = rows[-1]
+        prev    = rows[-2] if len(rows) >= 2 else latest
+
+        close   = float(latest["Close"])
+        p_close = float(prev["Close"])
+        chg     = close - p_close
+        pct     = (chg / p_close * 100) if p_close else 0.0
+        vol     = int(float(latest.get("Volume", 0) or 0))
+        date    = latest.get("Date", "")
+
+        return {
+            "ok":     True,
+            "price":  round(close),
+            "prev":   round(p_close),
+            "change": round(chg),
+            "pct":    round(pct, 2),
+            "volume": vol,
+            "date":   date,
+        }
+    except Exception as e:
+        return {"ok": False, "error": f"parse: {e} | raw: {text[:80]}"}
+
+
+def fetch_all_stooq(portfolio: list) -> list:
+    ts = datetime.now().strftime("%H:%M:%S")
+    print(f"\n[{ts}] Stooq から {len(portfolio)} 銘柄取得中...")
+
     results = []
-    for stock in portfolio:
-        code = stock["code"]
-        d    = sheet_data.get(code)
-        if d and d["price"] > 0:
-            results.append({
-                **stock,
-                **d,
-                "volume": 0,
-                "date":   today,
-                "ok":     True,
-            })
+    for i, stock in enumerate(portfolio):
+        d   = fetch_one_stooq(stock["code"])
+        row = {**stock, **d}
+        results.append(row)
+
+        if d["ok"]:
             sign = "+" if d["change"] >= 0 else ""
-            print(f"  ✓ {code} {stock['ja']:<14} "
-                  f"¥{d['price']:>8,}  ({sign}{d['pct']:.2f}%)")
+            print(f"  ✓ {stock['code']} {stock['ja']:<14} "
+                  f"¥{d['price']:>8,}  ({sign}{d['pct']:.2f}%)  {d['date']}")
         else:
-            err = "Sheetsにデータなし" if d else "コードが見つかりません"
-            print(f"  ✗ {code} {stock['ja']:<14} {err}")
-            results.append({**stock, "price":0,"prev":0,"change":0,
-                             "pct":0,"volume":0,"date":"","ok":False,"error":err})
+            print(f"  ✗ {stock['code']} {stock['ja']:<14} {d.get('error','')}")
+
+        # Stooq への連続アクセスを少し空ける (レート制限対策)
+        if i < len(portfolio) - 1:
+            time.sleep(0.5)
 
     ok_n = sum(1 for r in results if r["ok"])
     print(f"  → Done: {ok_n}/{len(results)}\n")
@@ -161,11 +169,12 @@ def github_put_file(filepath, content_str, sha=None, message="Update"):
         "message": message,
         "content": base64.b64encode(
             content_str.encode("utf-8")).decode("utf-8"),
-        "branch": GITHUB_BRANCH,
+        "branch":  GITHUB_BRANCH,
     }
     if sha:
         payload["sha"] = sha
-    r = requests.put(url, headers=gh_headers(), json=payload, timeout=10)
+    r = requests.put(url, headers=gh_headers(),
+                     json=payload, timeout=10)
     r.raise_for_status()
     return r.json()
 
@@ -184,12 +193,26 @@ def quotes():
     portfolio = request.json
     if not isinstance(portfolio, list) or not portfolio:
         return jsonify({"error": "銘柄リストが空です"}), 400
-    if not SHEET_ID:
-        return jsonify({"error":
-            "SHEET_ID が設定されていません。"
-            "Render の Environment タブで SHEET_ID を設定してください。"}), 500
-    results = fetch_from_sheets(portfolio)
+    results = fetch_all_stooq(portfolio)
     return jsonify(results)
+
+
+@app.route("/api/search")
+def search():
+    """?code=9433 → 銘柄存在確認"""
+    code = request.args.get("code", "").strip().zfill(4)
+    if not code.isdigit() or len(code) != 4:
+        return jsonify({"found": False,
+                        "error": "4桁の数字で入力してください"}), 400
+    d = fetch_one_stooq(code)
+    if not d["ok"]:
+        return jsonify({"found": False, "error": d["error"]})
+    return jsonify({
+        "found":   True,
+        "code":    code,
+        "name_en": f"{code}.JP (Stooq)",
+        "price":   d["price"],
+    })
 
 
 @app.route("/api/portfolio", methods=["GET"])
@@ -227,22 +250,6 @@ def save_portfolio():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/search")
-def search():
-    """銘柄コード確認 — Sheetsに追加する前の確認用"""
-    code = request.args.get("code", "").strip().zfill(4)
-    if not code.isdigit() or len(code) != 4:
-        return jsonify({"found": False, "error": "4桁の数字で入力してください"}), 400
-    # Sheets方式では銘柄確認はコードのみ返す
-    return jsonify({
-        "found":   True,
-        "code":    code,
-        "name_en": f"TYO:{code}",
-        "price":   None,
-        "note":    f"Google Sheets に =GOOGLEFINANCE(\"TYO:{code}\",\"price\") を追加してください",
-    })
-
-
 @app.route("/health")
 def health():
     import sys
@@ -250,8 +257,7 @@ def health():
         "status":       "ok",
         "time":         datetime.now().isoformat(),
         "python":       sys.version,
-        "sheet_ready":  bool(SHEET_ID),
-        "sheet_id":     SHEET_ID[:12] + "..." if SHEET_ID else "未設定",
+        "source":       "Stooq (stooq.com)",
         "github_ready": bool(GITHUB_TOKEN and GITHUB_REPO),
     })
 
